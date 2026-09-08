@@ -5,8 +5,9 @@ Reference document for guiding GitHub Copilot through implementation. This mirro
 - Frontend: React.js
 - Backend: Node.js + Express.js
 - Database: MySQL
-- LLM API: OpenAI (GPT-family) — campaign requirement extraction only
-- Embeddings: OpenAI `text-embedding-3-small` (or `sentence-transformers` local fallback) — semantic scoring only
+- LLM API: Google Gemini API — campaign requirement extraction only
+- Embeddings: Google Gemini embeddings model (`text-embedding-004` / `gemini-embedding-001` — confirm current model name in AI Studio docs at build time) — semantic scoring only. Free tier: up to 1,500 requests/day, sufficient for this project's scale (one embedding per profile save, one per campaign creation — not per recommendation call, since embeddings are precomputed and stored).
+- Note: both the LLM extraction (Increment 4) and embeddings (Increment 5) can share a single Gemini API key, simplifying config to one GEMINI_API_KEY env var instead of two separate providers.
 - Version control: Git + GitHub
 
 ## Increment Order (Section 3.9) — build strictly in this order

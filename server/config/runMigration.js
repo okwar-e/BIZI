@@ -5,7 +5,7 @@ const pool = require('./db');
 const schemaPath = path.join(__dirname, 'schema.sql');
 
 function extractTableName(statement) {
-  const match = statement.match(/CREATE\s+TABLE\s+`?(\w+)`?/i);
+  const match = statement.match(/CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?`?(\w+)`?/i);
   return match ? match[1] : 'unknown_table';
 }
 
