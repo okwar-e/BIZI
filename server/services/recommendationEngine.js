@@ -78,6 +78,14 @@ function ruleScore(campaign, creatorProfile) {
   return roundScore((0.6 * engagementScore) + (0.4 * followerScore));
 }
 
+function generateExplanation({ semanticScore, ruleScore, finalScore }) {
+  const overallPercentage = Math.round(finalScore * 100);
+  const semanticPercentage = Math.round(semanticScore * 100);
+  const rulePercentage = Math.round(ruleScore * 100);
+
+  return `${overallPercentage}% overall compatibility: ${semanticPercentage}% niche/audience match, ${rulePercentage}% engagement and follower fit`;
+}
+
 async function generateRecommendations(campaign, creatorProfiles) {
   const filteredProfiles = hardConstraintFilter(campaign, creatorProfiles);
   const scoredProfiles = await Promise.all(
@@ -104,6 +112,11 @@ async function generateRecommendations(campaign, creatorProfiles) {
       semanticScore: roundScore(profile.semanticScore),
       ruleScore: roundScore(profile.ruleScore),
       finalScore: roundScore(profile.finalScore),
+      explanationText: generateExplanation({
+        semanticScore: profile.semanticScore,
+        ruleScore: profile.ruleScore,
+        finalScore: profile.finalScore,
+      }),
     }));
 }
 
@@ -113,6 +126,7 @@ module.exports = {
   hardConstraintFilter,
   semanticScore,
   ruleScore,
+  generateExplanation,
   generateRecommendations,
 };
 
@@ -204,6 +218,9 @@ if (require.main === module) {
     })
     .then((recommendations) => {
       console.log(recommendations);
+      recommendations.forEach((recommendation) => {
+        console.log(recommendation.explanationText);
+      });
     })
     .catch((error) => {
       console.error(error.message);

@@ -5,7 +5,8 @@
   "main": "server.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "migrate": "node config/runMigration.js"
+    "migrate": "node config/runMigration.js",
+    "seed": "node scripts/seedTestData.js"
   },
   "keywords": [],
   "author": "",
