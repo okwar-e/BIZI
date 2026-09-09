@@ -3,6 +3,7 @@ const cors = require('cors');
 const dotenv = require('dotenv');
 const authRoutes = require('./routes/authRoutes');
 const creatorProfileRoutes = require('./routes/creatorProfileRoutes');
+const campaignRoutes = require('./routes/campaignRoutes');
 
 dotenv.config();
 
@@ -13,6 +14,7 @@ app.use(cors());
 app.use(express.json());
 app.use('/api/auth', authRoutes);
 app.use('/api/creator-profile', creatorProfileRoutes);
+app.use('/api/campaigns', campaignRoutes);
 
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);

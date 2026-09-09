@@ -45,3 +45,17 @@ CREATE TABLE IF NOT EXISTS creator_profiles (
   createdAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (creatorId) REFERENCES creators(creatorId) ON DELETE CASCADE
 );
+
+CREATE TABLE IF NOT EXISTS campaigns (
+  campaignId INT PRIMARY KEY AUTO_INCREMENT,
+  businessId INT NOT NULL,
+  nicheText TEXT NOT NULL,
+  nicheEmbedding JSON DEFAULT NULL,
+  targetAudience TEXT,
+  budgetRange VARCHAR(255),
+  preferredPlatforms VARCHAR(255),
+  location VARCHAR(255),
+  campaignGoal TEXT,
+  createdAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (businessId) REFERENCES businesses(businessId) ON DELETE CASCADE
+);
