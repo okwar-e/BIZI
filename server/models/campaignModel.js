@@ -1,4 +1,18 @@
 const db = require('../config/db');
+const { getEmbedding } = require('../services/embeddingService');
+
+async function buildNicheEmbedding(nicheText, targetAudience) {
+  const embeddingText = [nicheText, targetAudience]
+    .filter((value) => typeof value === 'string' && value.trim().length > 0)
+    .join(' ');
+
+  try {
+    return JSON.stringify(await getEmbedding(embeddingText));
+  } catch (error) {
+    console.warn(`Campaign embedding skipped: ${error.message}`);
+    return null;
+  }
+}
 
 async function createCampaign(businessId, {
   nicheText,
@@ -8,14 +22,16 @@ async function createCampaign(businessId, {
   location,
   campaignGoal,
 }) {
+  const nicheEmbedding = await buildNicheEmbedding(nicheText, targetAudience);
   const [result] = await db.query(
     `INSERT INTO campaigns
-     (businessId, nicheText, targetAudience, budgetRange, preferredPlatforms, location, campaignGoal)
-     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+     (businessId, nicheText, targetAudience, nicheEmbedding, budgetRange, preferredPlatforms, location, campaignGoal)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       businessId,
       nicheText,
       targetAudience || null,
+      nicheEmbedding,
       budgetRange || null,
       preferredPlatforms || null,
       location || null,
@@ -54,13 +70,15 @@ async function updateCampaign(campaignId, businessId, {
   location,
   campaignGoal,
 }) {
+  const nicheEmbedding = await buildNicheEmbedding(nicheText, targetAudience);
   const [result] = await db.query(
     `UPDATE campaigns
-     SET nicheText = ?, targetAudience = ?, budgetRange = ?, preferredPlatforms = ?, location = ?, campaignGoal = ?
+     SET nicheText = ?, targetAudience = ?, nicheEmbedding = ?, budgetRange = ?, preferredPlatforms = ?, location = ?, campaignGoal = ?
      WHERE campaignId = ? AND businessId = ?`,
     [
       nicheText,
       targetAudience || null,
+      nicheEmbedding,
       budgetRange || null,
       preferredPlatforms || null,
       location || null,

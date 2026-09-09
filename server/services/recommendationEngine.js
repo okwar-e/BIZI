@@ -1,5 +1,12 @@
 const { getEmbedding, cosineSimilarity } = require('./embeddingService');
 
+const WEIGHTS = { semantic: 0.5, rules: 0.5 };
+
+function roundScore(value, decimals = 3) {
+  const factor = 10 ** decimals;
+  return Math.round((value * factor) + Number.EPSILON) / factor;
+}
+
 function splitValues(value) {
   if (typeof value !== 'string') {
     return [];
@@ -42,15 +49,22 @@ function hardConstraintFilter(campaign, creatorProfiles) {
   });
 }
 
-async function semanticScore(campaign, creatorProfile) {
-  const campaignEmbedding = await getEmbedding(campaign.nicheText);
-  const creatorText = [creatorProfile.niche, creatorProfile.audienceDescription]
-    .filter((value) => typeof value === 'string' && value.trim().length > 0)
-    .join(' ');
-  const creatorEmbedding = await getEmbedding(creatorText);
-  const cosineSim = cosineSimilarity(campaignEmbedding, creatorEmbedding);
+function semanticScore(campaign, creatorProfile) {
+  if (!campaign.nicheEmbedding || !creatorProfile.nicheEmbedding) {
+    console.warn('Semantic score fallback: stored embedding is missing');
+    return 0.5;
+  }
 
-  return (cosineSim + 1) / 2;
+  try {
+    const campaignEmbedding = JSON.parse(campaign.nicheEmbedding);
+    const creatorEmbedding = JSON.parse(creatorProfile.nicheEmbedding);
+    const cosineSim = cosineSimilarity(campaignEmbedding, creatorEmbedding);
+
+    return roundScore((cosineSim + 1) / 2);
+  } catch (error) {
+    console.warn(`Semantic score fallback: ${error.message}`);
+    return 0.5;
+  }
 }
 
 function ruleScore(campaign, creatorProfile) {
@@ -61,18 +75,51 @@ function ruleScore(campaign, creatorProfile) {
   // Placeholder heuristic until budget-to-follower tiers are formally defined.
   const followerScore = creatorProfile.followerCount > 0 ? 0.7 : 0.3;
 
-  return (0.6 * engagementScore) + (0.4 * followerScore);
+  return roundScore((0.6 * engagementScore) + (0.4 * followerScore));
+}
+
+async function generateRecommendations(campaign, creatorProfiles) {
+  const filteredProfiles = hardConstraintFilter(campaign, creatorProfiles);
+  const scoredProfiles = await Promise.all(
+    filteredProfiles.map(async (creatorProfile) => {
+      const semanticScoreValue = await semanticScore(campaign, creatorProfile);
+      const ruleScoreValue = ruleScore(campaign, creatorProfile);
+      const finalScore = (WEIGHTS.semantic * semanticScoreValue)
+        + (WEIGHTS.rules * ruleScoreValue);
+
+      return {
+        profileId: creatorProfile.profileId,
+        semanticScore: semanticScoreValue,
+        ruleScore: ruleScoreValue,
+        finalScore,
+      };
+    })
+  );
+
+  return scoredProfiles
+    .sort((profileA, profileB) => profileB.finalScore - profileA.finalScore)
+    .slice(0, 5)
+    .map((profile) => ({
+      profileId: profile.profileId,
+      semanticScore: roundScore(profile.semanticScore),
+      ruleScore: roundScore(profile.ruleScore),
+      finalScore: roundScore(profile.finalScore),
+    }));
 }
 
 module.exports = {
+  WEIGHTS,
+  roundScore,
   hardConstraintFilter,
   semanticScore,
   ruleScore,
+  generateRecommendations,
 };
 
 if (require.main === module) {
   const campaign = {
     nicheText: 'Fitness and wellness products for young adults',
+    targetAudience: 'University students aged 18-25 interested in fitness',
     preferredPlatforms: 'TikTok, Instagram',
     location: 'Nairobi',
     budgetRange: 'KES 30000-50000',
@@ -107,21 +154,56 @@ if (require.main === module) {
       platforms: 'Instagram',
       location: 'Mombasa',
     },
+    {
+      profileId: 4,
+      niche: 'Workout programs and activewear',
+      audienceDescription: 'Fitness-focused young professionals',
+      verifiedEngagement: 5,
+      followerCount: 8000,
+      platforms: 'Instagram, TikTok',
+      location: 'Nairobi',
+    },
+    {
+      profileId: 5,
+      niche: 'Healthy food and nutrition',
+      audienceDescription: 'Young adults interested in wellness and healthy living',
+      selfReportedEngagement: 3,
+      followerCount: 1200,
+      platforms: 'TikTok',
+      location: 'Nairobi',
+    },
   ];
 
   console.log(hardConstraintFilter(campaign, creatorProfiles));
   console.log(creatorProfiles.map((creatorProfile) => ruleScore(campaign, creatorProfile)));
+
+  const roundingCheck = roundScore(0.5 * 0.879 + 0.5 * 0.58, 3);
+  console.log(
+    roundingCheck === 0.73
+      ? 'Rounding check PASS: 0.7295 rounds to 0.730'
+      : `Rounding check FAIL: expected 0.73, received ${roundingCheck}`
+  );
 
   if (process.env.RUN_SEMANTIC_TEST !== 'true') {
     return;
   }
 
   Promise.all([
-    semanticScore(campaign, creatorProfiles[0]),
-    semanticScore(campaign, creatorProfiles[1]),
+    getEmbedding(`${campaign.nicheText} ${campaign.targetAudience}`),
+    ...creatorProfiles.map((creatorProfile) =>
+      getEmbedding(`${creatorProfile.niche} ${creatorProfile.audienceDescription}`)
+    ),
   ])
-    .then(([matchingScore, unrelatedScore]) => {
-      console.log({ matchingScore, unrelatedScore });
+    .then(([campaignEmbedding, ...creatorEmbeddings]) => {
+      campaign.nicheEmbedding = JSON.stringify(campaignEmbedding);
+      creatorProfiles.forEach((creatorProfile, index) => {
+        creatorProfile.nicheEmbedding = JSON.stringify(creatorEmbeddings[index]);
+      });
+
+      return generateRecommendations(campaign, creatorProfiles);
+    })
+    .then((recommendations) => {
+      console.log(recommendations);
     })
     .catch((error) => {
       console.error(error.message);
