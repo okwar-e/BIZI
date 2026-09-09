@@ -53,9 +53,21 @@ async function semanticScore(campaign, creatorProfile) {
   return (cosineSim + 1) / 2;
 }
 
+function ruleScore(campaign, creatorProfile) {
+  const engagementRate = creatorProfile.verifiedEngagement
+    ?? creatorProfile.selfReportedEngagement
+    ?? 2.0;
+  const engagementScore = Math.min(engagementRate / 10, 1);
+  // Placeholder heuristic until budget-to-follower tiers are formally defined.
+  const followerScore = creatorProfile.followerCount > 0 ? 0.7 : 0.3;
+
+  return (0.6 * engagementScore) + (0.4 * followerScore);
+}
+
 module.exports = {
   hardConstraintFilter,
   semanticScore,
+  ruleScore,
 };
 
 if (require.main === module) {
@@ -71,6 +83,8 @@ if (require.main === module) {
       profileId: 1,
       niche: 'Fitness and wellness products',
       audienceDescription: 'Young adults interested in health and exercise',
+      verifiedEngagement: 8,
+      followerCount: 15000,
       platforms: 'YouTube, TikTok',
       location: 'nairobi',
     },
@@ -78,6 +92,8 @@ if (require.main === module) {
       profileId: 2,
       niche: 'Home gardening tools',
       audienceDescription: 'People interested in plants and landscaping',
+      selfReportedEngagement: 4,
+      followerCount: 0,
       platforms: 'YouTube, Facebook',
       location: 'Nairobi',
     },
@@ -85,12 +101,20 @@ if (require.main === module) {
       profileId: 3,
       niche: 'Fitness and wellness products',
       audienceDescription: 'Young adults interested in health and exercise',
+      verifiedEngagement: null,
+      selfReportedEngagement: null,
+      followerCount: null,
       platforms: 'Instagram',
       location: 'Mombasa',
     },
   ];
 
   console.log(hardConstraintFilter(campaign, creatorProfiles));
+  console.log(creatorProfiles.map((creatorProfile) => ruleScore(campaign, creatorProfile)));
+
+  if (process.env.RUN_SEMANTIC_TEST !== 'true') {
+    return;
+  }
 
   Promise.all([
     semanticScore(campaign, creatorProfiles[0]),
