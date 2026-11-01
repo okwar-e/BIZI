@@ -21,12 +21,16 @@ async function createCampaign(businessId, {
   preferredPlatforms,
   location,
   campaignGoal,
-}) {
-  const nicheEmbedding = await buildNicheEmbedding(nicheText, targetAudience);
-  const [result] = await db.query(
+  totalBudget = 0,
+  currency = 'KES',
+  targetCreatorCount = 1,
+}, options = {}) {
+  const nicheEmbedding = await (options.buildEmbedding || buildNicheEmbedding)(nicheText, targetAudience);
+  const [result] = await (options.query || db.query)(
     `INSERT INTO campaigns
-     (businessId, nicheText, targetAudience, nicheEmbedding, budgetRange, preferredPlatforms, location, campaignGoal)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+     (businessId, nicheText, targetAudience, nicheEmbedding, budgetRange, preferredPlatforms, location, campaignGoal,
+      totalBudget, currency, targetCreatorCount)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)` ,
     [
       businessId,
       nicheText,
@@ -36,6 +40,9 @@ async function createCampaign(businessId, {
       preferredPlatforms || null,
       location || null,
       campaignGoal || null,
+      totalBudget,
+      currency,
+      targetCreatorCount,
     ]
   );
 
@@ -44,7 +51,17 @@ async function createCampaign(businessId, {
 
 async function getCampaignsByBusinessId(businessId) {
   const [rows] = await db.query(
-    `SELECT * FROM campaigns
+    `SELECT c.*,
+       COALESCE((SELECT SUM(i.offeredAmount) FROM campaign_invitations i
+         WHERE i.campaignId = c.campaignId AND (i.status = 'accepted' OR
+           (i.status = 'pending' AND (i.expiresAt IS NULL OR i.expiresAt > CURRENT_TIMESTAMP)))), 0) AS allocatedBudget,
+       (SELECT COUNT(DISTINCT i.creatorId) FROM campaign_invitations i
+         WHERE i.campaignId = c.campaignId AND i.status = 'accepted') +
+       (SELECT COUNT(DISTINCT a.creatorId) FROM campaign_applications a
+         WHERE a.campaignId = c.campaignId AND a.status = 'accepted'
+           AND NOT EXISTS (SELECT 1 FROM campaign_invitations i
+             WHERE i.campaignId = a.campaignId AND i.creatorId = a.creatorId AND i.status = 'accepted')) AS filledCreatorSlots
+     FROM campaigns c
      WHERE businessId = ?
      ORDER BY createdAt DESC`,
     [businessId]
@@ -55,7 +72,17 @@ async function getCampaignsByBusinessId(businessId) {
 
 async function getCampaignById(campaignId) {
   const [rows] = await db.query(
-    `SELECT * FROM campaigns WHERE campaignId = ? LIMIT 1`,
+    `SELECT c.*,
+       COALESCE((SELECT SUM(i.offeredAmount) FROM campaign_invitations i
+         WHERE i.campaignId = c.campaignId AND (i.status = 'accepted' OR
+           (i.status = 'pending' AND (i.expiresAt IS NULL OR i.expiresAt > CURRENT_TIMESTAMP)))), 0) AS allocatedBudget,
+       (SELECT COUNT(DISTINCT i.creatorId) FROM campaign_invitations i
+         WHERE i.campaignId = c.campaignId AND i.status = 'accepted') +
+       (SELECT COUNT(DISTINCT a.creatorId) FROM campaign_applications a
+         WHERE a.campaignId = c.campaignId AND a.status = 'accepted'
+           AND NOT EXISTS (SELECT 1 FROM campaign_invitations i
+             WHERE i.campaignId = a.campaignId AND i.creatorId = a.creatorId AND i.status = 'accepted')) AS filledCreatorSlots
+     FROM campaigns c WHERE c.campaignId = ? LIMIT 1`,
     [campaignId]
   );
 
@@ -69,11 +96,15 @@ async function updateCampaign(campaignId, businessId, {
   preferredPlatforms,
   location,
   campaignGoal,
-}) {
-  const nicheEmbedding = await buildNicheEmbedding(nicheText, targetAudience);
-  const [result] = await db.query(
+  totalBudget = 0,
+  currency = 'KES',
+  targetCreatorCount = 1,
+}, options = {}) {
+  const nicheEmbedding = await (options.buildEmbedding || buildNicheEmbedding)(nicheText, targetAudience);
+  const [result] = await (options.query || db.query)(
     `UPDATE campaigns
-     SET nicheText = ?, targetAudience = ?, nicheEmbedding = ?, budgetRange = ?, preferredPlatforms = ?, location = ?, campaignGoal = ?
+     SET nicheText = ?, targetAudience = ?, nicheEmbedding = ?, budgetRange = ?, preferredPlatforms = ?, location = ?, campaignGoal = ?,
+       totalBudget = ?, currency = ?, targetCreatorCount = ?
      WHERE campaignId = ? AND businessId = ?`,
     [
       nicheText,
@@ -83,6 +114,9 @@ async function updateCampaign(campaignId, businessId, {
       preferredPlatforms || null,
       location || null,
       campaignGoal || null,
+      totalBudget,
+      currency,
+      targetCreatorCount,
       campaignId,
       businessId,
     ]

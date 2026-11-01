@@ -4,9 +4,12 @@
   "description": "",
   "main": "server.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
+    "test": "node --test tests/*.test.js",
     "migrate": "node config/runMigration.js",
-    "seed": "node scripts/seedTestData.js"
+    "migrate:creator-platform": "node scripts/migrateCreatorPlatform.js",
+    "migrate:campaign-offers": "node scripts/migrateCampaignOffers.js",
+    "seed": "node scripts/seedTestData.js",
+    "demo": "node scripts/demoRecommendations.js"
   },
   "keywords": [],
   "author": "",

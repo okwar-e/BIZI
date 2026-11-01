@@ -1,0 +1,9 @@
+fastapi
+uvicorn
+pydantic
+joblib
+pandas
+numpy
+scikit-learn==1.6.1
+sentence-transformers
+torch

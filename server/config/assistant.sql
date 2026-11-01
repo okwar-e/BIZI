@@ -1,0 +1,23 @@
+CREATE TABLE IF NOT EXISTS demo_dataset_records (
+ namespace VARCHAR(64) NOT NULL, recordKey VARCHAR(128) NOT NULL, entityType VARCHAR(32) NOT NULL,
+ entityId VARCHAR(64) NOT NULL, provenance JSON NOT NULL, createdAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+ PRIMARY KEY(namespace,recordKey), INDEX(entityType,entityId)
+);
+CREATE TABLE IF NOT EXISTS assistant_proposals (
+ proposalId CHAR(36) PRIMARY KEY, actorId INT NOT NULL, role VARCHAR(16) NOT NULL,
+ actionName VARCHAR(64) NOT NULL, argumentsJson JSON NOT NULL, resourceHash CHAR(64) NOT NULL,
+ status VARCHAR(16) NOT NULL DEFAULT 'pending', expiresAt DATETIME NOT NULL,
+ resultJson JSON NULL, createdAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+ FOREIGN KEY(actorId) REFERENCES users(userId) ON DELETE CASCADE,
+ INDEX(actorId,createdAt)
+);
+CREATE TABLE IF NOT EXISTS assistant_audit (
+ auditId BIGINT PRIMARY KEY AUTO_INCREMENT, actorId INT NOT NULL, proposalId CHAR(36) NULL,
+ eventType VARCHAR(32) NOT NULL, metadata JSON NOT NULL, createdAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+ INDEX(actorId,createdAt), FOREIGN KEY(actorId) REFERENCES users(userId) ON DELETE CASCADE
+);
+CREATE TABLE IF NOT EXISTS assistant_embedding_cache (
+ cacheKey CHAR(64) PRIMARY KEY, actorId INT NOT NULL, model VARCHAR(255) NOT NULL,
+ vectorJson JSON NOT NULL, expiresAt DATETIME NOT NULL,
+ FOREIGN KEY(actorId) REFERENCES users(userId) ON DELETE CASCADE, INDEX(expiresAt)
+);

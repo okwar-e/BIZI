@@ -1,75 +1,26 @@
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 const db = require('../config/db');
-const { createUser, findUserByEmail } = require('../models/userModel');
+const { findUserByEmail } = require('../models/userModel');
 
-async function registerBusiness(req, res) {
-  const { name, email, password, businessName, industry } = req.body;
-
-  try {
-    const existingUser = await findUserByEmail(email);
-    if (existingUser) {
-      return res.status(400).json({ message: 'Email already exists' });
+const { createRegistrationService } = require('../services/registrationService');
+const registerAccount = createRegistrationService({ db, hashPassword: password => bcrypt.hash(password, 10) });
+function registrationHandler(role) {
+  return async (req, res) => {
+    try { return res.status(201).json(await registerAccount(role, req.body)); }
+    catch (error) {
+      if (error.code === 'ER_DUP_ENTRY') return res.status(409).json({ message: 'Email already exists' });
+      return res.status(500).json({ message: 'Account could not be created. Please try again.' });
     }
-
-    const passwordHash = await bcrypt.hash(password, 10);
-    const userId = await createUser({
-      name,
-      email,
-      passwordHash,
-      role: 'business',
-    });
-
-    const [businessResult] = await db.query(
-      `INSERT INTO businesses (userId, businessName, industry) VALUES (?, ?, ?)`,
-      [userId, businessName, industry || null]
-    );
-
-    return res.status(201).json({
-      userId,
-      businessId: businessResult.insertId,
-    });
-  } catch (error) {
-    return res.status(500).json({ message: 'Server error' });
-  }
+  };
 }
-
-async function registerCreator(req, res) {
-  const { name, email, password, publicHandle } = req.body;
-
-  try {
-    const existingUser = await findUserByEmail(email);
-    if (existingUser) {
-      return res.status(400).json({ message: 'Email already exists' });
-    }
-
-    const passwordHash = await bcrypt.hash(password, 10);
-    const userId = await createUser({
-      name,
-      email,
-      passwordHash,
-      role: 'creator',
-    });
-
-    const [creatorResult] = await db.query(
-      `INSERT INTO creators (userId, publicHandle) VALUES (?, ?)`,
-      [userId, publicHandle || null]
-    );
-
-    return res.status(201).json({
-      userId,
-      creatorId: creatorResult.insertId,
-    });
-  } catch (error) {
-    return res.status(500).json({ message: 'Server error' });
-  }
-}
-
+const registerBusiness = registrationHandler('business');
+const registerCreator = registrationHandler('creator');
 async function login(req, res) {
   const { email, password } = req.body;
 
   try {
-    const user = await findUserByEmail(email);
+    const user = await findUserByEmail(email.trim().toLowerCase());
     if (!user) {
       return res.status(401).json({ message: 'Invalid credentials' });
     }

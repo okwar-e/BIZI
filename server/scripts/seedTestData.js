@@ -1,7 +1,10 @@
 const bcrypt = require('bcrypt');
 const db = require('../config/db');
 const { createUser } = require('../models/userModel');
-const { createOrUpdateProfile } = require('../models/creatorProfileModel');
+const {
+  createOrUpdateProfile,
+  updateSelfReportedMetrics,
+} = require('../models/creatorProfileModel');
 const { createCampaign } = require('../models/campaignModel');
 
 const creators = [
@@ -70,6 +73,10 @@ async function seedCreator(index, profile, passwordHash) {
   );
 
   const profileId = await createOrUpdateProfile(creatorResult.insertId, profile);
+  await updateSelfReportedMetrics(creatorResult.insertId, {
+    selfReportedEngagement: profile.selfReportedEngagement,
+    followerCount: profile.followerCount,
+  });
   return { userId, creatorId: creatorResult.insertId, profileId };
 }
 
