@@ -5,10 +5,10 @@ const {verifyToken}=require('../middleware/authMiddleware');
 const {createOpenRouter}=require('../services/openRouterService');
 const {chat}=require('../services/biziAssistant');
 const {propose,confirm,toolsFor}=require('../services/assistantActions');
-const {uuid}=require('../services/recommendationValidation');
 const methodology=require('../services/recommendationMethodology');
 const router=express.Router();
 const rate=new Map();
+const uuid=value=>typeof value==='string'&&/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
 router.get('/methodology',(_req,res)=>res.json(methodology));
 router.use(verifyToken);
 router.use(async(req,res,next)=>{
@@ -26,7 +26,7 @@ router.use(async(req,res,next)=>{
 router.get('/status',(req,res)=>res.json({...createOpenRouter().status(),role:req.actor.role,actions:toolsFor(req.actor.role).map(t=>t.function),mode:'preview_then_confirm'}));
 router.post('/chat',async(req,res)=>{
  const {question,context={}}=req.body||{};
- if(typeof question!=='string'||!question.trim()||question.length>2000||!context||typeof context!=='object'||Array.isArray(context)||Object.keys(context).some(k=>!['campaignId','runId'].includes(k))||(context.campaignId!==undefined&&(!Number.isInteger(context.campaignId)||context.campaignId<=0))||(context.runId!==undefined&&!uuid(context.runId)))return res.status(400).json({error:'Invalid question or context'});
+ if(typeof question!=='string'||!question.trim()||question.length>2000||!context||typeof context!=='object'||Array.isArray(context)||Object.keys(context).some(k=>k!=='campaignId')||(context.campaignId!==undefined&&(!Number.isInteger(context.campaignId)||context.campaignId<=0)))return res.status(400).json({error:'Invalid question or context'});
  if(req.actor.role!=='business'&&Object.keys(context).length)return res.status(403).json({error:'Campaign context is only available to businesses'});
  try{res.json(await chat({db,provider:createOpenRouter(),actor:req.actor,question:question.trim(),context}));}
  catch(e){res.status(e.status||500).json({error:e.status?e.message:'Assistant unavailable'});}

@@ -1,13 +1,12 @@
 import { useEffect, useState } from 'react'
 import { Link, NavLink, useLocation, useNavigate } from 'react-router-dom'
-import { formatMoney } from './campaignBudget'
+import { estimatedOffer, formatMoney } from './campaignBudget'
 import './CreatorWorkspace.css'
 
 const navItems = [
   ['Overview', '/creator/dashboard'], ['My Profile', '/creator/profile'],
   ['Discover Campaigns', '/creator/campaigns'], ['Applications', '/creator/applications'],
-  ['Invitations', '/creator/invitations'], ['Active Collaborations', '/creator/collaborations'],
-  ['Messages', '/creator/messages'], ['Analytics', '/creator/analytics'],
+  ['Invitations', '/creator/invitations'],
 ]
 const errorText = error => error.message || 'Something went wrong. Please try again.'
 
@@ -43,7 +42,6 @@ function CreatorOverview({ api }) {
         <Link to="/creator/campaigns"><strong>{overview.openCampaigns}</strong><span>Open campaigns</span></Link>
         <Link to="/creator/applications"><strong>{overview.pendingApplications}</strong><span>Pending applications</span></Link>
         <Link to="/creator/invitations"><strong>{overview.pendingInvitations}</strong><span>Pending invitations</span></Link>
-        <div><strong>Coming soon</strong><span>Active collaborations</span></div>
       </div>}
     {error && <Notice error>{error}</Notice>}
     <div className="creator-quick-links">{navItems.slice(1, 5).map(([label, to]) => <Link className="creator-quick-link" key={to} to={to}>{label}</Link>)}</div>
@@ -115,7 +113,7 @@ function CampaignList({ api }) {
     {loading && <p role="status">Loading open campaigns…</p>}{error && <><Notice error>{error}</Notice><button onClick={reload}>Retry</button></>}
     {!loading && !error && !campaigns?.length && <div className="creator-empty"><h2>No open campaigns yet</h2><p className="muted">Campaigns appear here when a business publishes them.</p></div>}
     <div className="creator-campaign-list">{campaigns?.map(campaign => <article className="creator-campaign-row" key={campaign.campaignId}>
-      <div><h2>{campaign.nicheText}</h2><p>{campaign.businessName}{campaign.industry ? ` · ${campaign.industry}` : ''}</p><p className="muted small">{campaign.campaignGoal || 'Objective not specified'} · {campaign.preferredPlatforms || 'Platform not specified'} · {campaign.location || 'Location not specified'}</p>{campaign.budgetRange && <p className="muted small">Budget range: {campaign.budgetRange}</p>}{campaign.applicationStatus && <span className="badge">Application: {campaign.applicationStatus}</span>}</div>
+      <div><h2>{campaign.nicheText}</h2><p>{campaign.businessName}{campaign.industry ? ` · ${campaign.industry}` : ''}</p><p className="muted small">{campaign.campaignGoal || 'Objective not specified'} · {campaign.preferredPlatforms || 'Platform not specified'} · {campaign.location || 'Location not specified'}</p>{Number(campaign.totalBudget) > 0 && <p className="muted small">Campaign budget: {formatMoney(campaign.totalBudget, campaign.currency)} · Target creators: {campaign.targetCreatorCount} · Estimated starting offer: {formatMoney(estimatedOffer(campaign.totalBudget, campaign.targetCreatorCount), campaign.currency)}</p>}{campaign.budgetRange && <p className="muted small">Budget range: {campaign.budgetRange}</p>}{campaign.applicationStatus && <span className="badge">Application: {campaign.applicationStatus}</span>}</div>
       <Link className="button-link" to={`/creator/campaigns/${campaign.campaignId}`}>View campaign</Link>
     </article>)}</div>
   </section>
@@ -137,6 +135,7 @@ function CampaignDetail({ api, campaignId }) {
     <p><strong>{campaign.businessName}</strong>{campaign.industry ? ` · ${campaign.industry}` : ''}</p>
     {campaign.industry && <p><strong>Category:</strong> {campaign.industry}</p>}
     {campaign.targetAudience && <p><strong>Target audience:</strong> {campaign.targetAudience}</p>}{campaign.campaignGoal && <p><strong>Objective:</strong> {campaign.campaignGoal}</p>}
+    {Number(campaign.totalBudget) > 0 && <p><strong>Campaign budget:</strong> {formatMoney(campaign.totalBudget, campaign.currency)} · Target creators: {campaign.targetCreatorCount} · Estimated starting offer: {formatMoney(estimatedOffer(campaign.totalBudget, campaign.targetCreatorCount), campaign.currency)}. This estimate is derived from the campaign budget, not a creator's market rate.</p>}
     {campaign.budgetRange && <p><strong>Budget range:</strong> {campaign.budgetRange}</p>}<p className="muted">{campaign.preferredPlatforms || 'Platform not specified'} · {campaign.location || 'Location not specified'}</p>
     {campaign.applicationStatus ? <p className="notice">Application status: {campaign.applicationStatus}{campaign.applicationCreatedAt ? ` · Applied ${new Date(campaign.applicationCreatedAt).toLocaleDateString()}` : ''}</p> : <>
       <label className="field"><span>Application message (optional)</span><textarea maxLength={2000} rows={4} value={message} onChange={event => setMessage(event.target.value)} /></label>
@@ -170,10 +169,6 @@ function RecordList({ api, kind }) {
   </article>)}</div>
 }
 
-function EmptySection({ title }) {
-  return <section className="creator-page"><p className="eyebrow">CREATOR WORKSPACE</p><h1>{title}</h1><div className="creator-empty"><p className="muted">This section is not available yet. No activity or performance is being simulated.</p></div></section>
-}
-
 export default function CreatorWorkspace({ api }) {
   const location = useLocation(), navigate = useNavigate()
   useEffect(() => { if (!location.pathname.startsWith('/creator/')) navigate('/creator/dashboard', { replace: true }) }, [location.pathname, navigate])
@@ -184,9 +179,6 @@ export default function CreatorWorkspace({ api }) {
   else if (campaignDetail) page = <CampaignDetail api={api} campaignId={campaignDetail[1]} />
   else if (location.pathname === '/creator/applications') page = <section className="creator-page"><p className="eyebrow">APPLICATIONS</p><h1>Your applications</h1><RecordList api={api} kind="applications" /></section>
   else if (location.pathname === '/creator/invitations') page = <section className="creator-page"><p className="eyebrow">INVITATIONS</p><h1>Business invitations</h1><RecordList api={api} kind="invitations" /></section>
-  else if (location.pathname === '/creator/collaborations') page = <EmptySection title="Active collaborations" />
-  else if (location.pathname === '/creator/messages') page = <EmptySection title="Messages" />
-  else if (location.pathname === '/creator/analytics') page = <EmptySection title="Analytics" />
   else page = <CreatorOverview api={api} />
   return <main className="creator-dashboard"><aside className="creator-sidebar"><p className="eyebrow">CREATOR WORKSPACE</p><h1>Bizi Creators</h1><nav aria-label="Creator navigation">
     {navItems.map(([label, to]) => <NavLink key={to} to={to} className={({ isActive }) => `creator-nav-link${isActive ? ' active' : ''}`}>{label}</NavLink>)}

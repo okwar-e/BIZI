@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 from typing import Any
 
@@ -18,11 +19,23 @@ FEATURE_ORDER = (
     "log_creator_post_count",
     "baseline_er_missing",
 )
+EMAIL_PATTERN = re.compile(r"(?i)\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b")
+PHONE_PATTERN = re.compile(r"(?<!\w)\+?[\d(][\d().\s-]{7,}\d(?!\w)")
+
+
+def sanitize_contact_details(value: Any) -> str:
+    text = "" if value is None or pd.isna(value) else str(value)
+    text = EMAIL_PATTERN.sub("[contact removed]", text)
+
+    def remove_phone(match: re.Match[str]) -> str:
+        return "[contact removed]" if sum(character.isdigit() for character in match.group()) >= 9 else match.group()
+
+    return re.sub(r"\s+", " ", PHONE_PATTERN.sub(remove_phone, text)).strip()
 
 
 def make_profile_text(display_name: Any, category: Any, bio: Any) -> str:
     parts = []
-    for value in (display_name, category, bio):
+    for value in (display_name, category, sanitize_contact_details(bio)):
         if value is not None and not pd.isna(value):
             text = str(value).strip().lower()
             if text:
@@ -166,7 +179,7 @@ class CreatorPredictor:
                     "creator_post_count": int(self.post_counts[index]),
                     "creator_website": self._optional_text(row["creator_website"]),
                     "creator_category": self._optional_text(row["creator_category"]),
-                    "creator_bio": self._optional_text(row["creator_bio"]),
+                    "creator_bio": sanitize_contact_details(row["creator_bio"]),
                     "score": float(scores[index]),
                     "rank": rank,
                     "feature_values": {

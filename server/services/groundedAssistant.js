@@ -55,7 +55,7 @@ function explainMlRecommendation({ business, campaign, recommendation, modelVers
 
   const missingContribution = contributions.find(item => item.feature === 'baseline_er_missing');
   if (missingContribution && recommendation.feature_values?.baseline_er_missing === 1) {
-    unknowns.push('Historical engagement evidence was unavailable for this creator.');
+    unknowns.push('Engagement-rate evidence is unavailable across the current serving catalog. baseline_er_missing is constant for all candidates and does not distinguish their ranking.');
   }
   if (!recommendation.creator_category) unknowns.push('Creator category is not available in the catalog.');
   if (!recommendation.creator_bio) unknowns.push('Creator bio is not available in the catalog.');
@@ -103,9 +103,9 @@ function explainMlRecommendation({ business, campaign, recommendation, modelVers
     evidence_available: evidenceAvailable,
     unknowns,
     limitations: [
-      'Recommendation Score is a ranking signal, not a calibrated probability, campaign-success estimate, or ROI prediction.',
+      'Model score is a ranking signal, not a calibrated probability or campaign-success estimate.',
       'ML catalog usernames are not verified links to Bizi creator accounts.',
-      'Historical engagement evidence is unavailable and was not used to distinguish candidates.',
+      'The serving catalog has no creator-specific engagement-rate evidence; the missingness feature is constant across candidates.',
     ],
     citations: sources.map(({ id, title }) => ({ id, title })),
     sources,

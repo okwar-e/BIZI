@@ -2,3 +2,15 @@ node_modules/
 .env
 .env.*
 !.env.example
+server/.venv/
+**/__pycache__/
+*.py[cod]
+client/dist/
+client-update-backups/
+server/Bizi_model_export/
+server/ml/models/
+server/data/influencer_marketing_roi_dataset.csv
+server/data/complete-demo/
+server/data/campaigns_for_labeling.json
+server/data/creators_for_labeling.json
+server/data/ground_truth_template.json

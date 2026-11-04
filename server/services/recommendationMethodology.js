@@ -1,15 +1,24 @@
 'use strict';
-const {VERSION,WEIGHTS}=require('./recommendationV1');
+
+const features = [
+  { id: 'text_similarity', text: 'TF-IDF cosine similarity between campaign/business text and creator display name, category, and sanitized bio.' },
+  { id: 'semantic_similarity', text: 'Cosine similarity between sentence-transformer embeddings of the same campaign/business and creator text.' },
+  { id: 'log_creator_followers', text: 'Natural logarithm of one plus the catalog follower count.' },
+  { id: 'log_creator_following', text: 'Natural logarithm of one plus the catalog following count.' },
+  { id: 'log_creator_post_count', text: 'Natural logarithm of one plus the catalog post count.' },
+  { id: 'baseline_er_missing', text: 'Missing historical engagement-rate indicator. It is constant at 1 for the current serving catalog and does not distinguish creators.' },
+];
+
 module.exports = {
-  version:VERSION,weights:WEIGHTS,
-  formula:'Suitability = 100 × Σ(goal weight × component score). Evidence coverage = 100 × Σ(goal weight × evidence coverage). Missing weights are never redistributed.',
-  components:[
-    {id:'semantic',text:'Matching valid embeddings require model/task/version provenance, current vector hashes and a genuine unexpired calibration curve. Otherwise niche-token overlap is multiplied by 0.35 and coverage is 0.25. This fallback is lexical, not semantic confidence or verified audience alignment.'},
-    {id:'engagement',text:'Use the empirical midrank percentile of a genuine platform/follower/definition-matched cohort. Fresh verified rates receive full weight; self reports receive a 0.5 discount. Without a valid reference, score is zero even when a rate is populated. Rates must use the same percentage denominator.'},
-    {id:'reach',text:'With an explicit follower target, score is 0.5 × min(1, log(1+followers)/log(1+target)). Coverage is 0.5 because the current follower field is self-reported. Missing target/count scores zero.'},
-    {id:'budget',text:'Full score requires a currently valid verified quote within budget with exactly matching currency and deliverable scope. Unknown/unverified/incomparable prices remain eligible and score zero, with a price-unverified warning. Synthetic quotes are never treated as real verification.'},
+  version: 'bizi-logistic-regression-v1',
+  modelType: 'Trained Logistic Regression recommendation model',
+  formula: 'The Node API sends owned campaign/business text to FastAPI. FastAPI builds the configured six-feature vector, applies the saved scaler, and ranks catalog creators using the saved Logistic Regression model.',
+  features,
+  limitations: [
+    'Model scores are ranking values, not calibrated probabilities, performance guarantees, or outcome predictions.',
+    'The current 2,362-profile serving catalog has no creator-specific engagement-rate evidence; baseline_er_missing is constant and is not a ranking differentiator.',
+    'ML catalog identities are separate from registered Bizi creator accounts; no identity mapping exists.',
+    'The model does not guarantee campaign performance or replace business judgement.',
+    'Instagram integration and payment processing are not implemented.',
   ],
-  exclusions:['Known platform mismatch','Known required-location mismatch','Flagged creator','Fresh verified comparable quote over budget'],
-  tieBreak:'Descending suitability, then descending evidence coverage, then ascending profile id. Return five.',
-  limitations:['Weights and thresholds are documented product defaults, not experimentally validated constants.','Suitability is not a probability and evidence coverage is not statistical confidence.','A complete synthetic record is not verified evidence. Synthetic vectors are never production calibration.','No trained outcome/ROI model is served. Demo traffic must be excluded from learning.'],
 };

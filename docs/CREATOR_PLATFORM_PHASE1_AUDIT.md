@@ -1,4 +1,6 @@
-# Creator Platform Phase 1 Audit
+# Creator Platform Phase 1 Audit (Historical)
+
+This document records the pre-creator-platform baseline and its deferred work. It is not a description of the current implementation; see the root `README.md` for current routes, workflows, and limitations.
 
 ## Existing Foundation
 

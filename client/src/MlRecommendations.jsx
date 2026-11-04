@@ -21,11 +21,11 @@ function MlRecommendationCard({ recommendation }) {
         <span className="avatar" aria-hidden="true">{String(recommendation.rank).padStart(2, '0')}</span>
         <div>
           <h3>{recommendation.creator_display_name || recommendation.creator_username}</h3>
-          <p className="muted small">@{recommendation.creator_username} · ML catalog identity</p>
+          <p className="muted small">@{recommendation.creator_username} · ML catalog identity, not a linked Bizi account</p>
         </div>
       </div>
       <div className="ml-score">
-        <span className="metric-label">Recommendation Score</span>
+        <span className="metric-label">Model score</span>
         <strong>{Number(recommendation.score).toFixed(4)}</strong>
       </div>
     </div>
@@ -53,8 +53,8 @@ function MlRecommendationCard({ recommendation }) {
           <dd>{Number(item.contribution) >= 0 ? '+' : ''}{Number(item.contribution).toFixed(4)}</dd>
         </div>)}
       </dl>
-      <p className="small muted">Contributions are standardized feature values multiplied by the fitted model coefficients; they describe the model's linear decision score, not causal effects. The intercept is {Number(recommendation.model_intercept).toFixed(4)}.</p>
-      <p className="small muted">Historical engagement missingness is constant across the live catalog, so it is disclosed as an unknown rather than shown as a creator-specific differentiator.</p>
+      <p className="small muted">Contributions are standardized feature values multiplied by the fitted Logistic Regression coefficients; they describe the model score, not causal effects. The intercept is {Number(recommendation.model_intercept).toFixed(4)}.</p>
+      <p className="small muted">Engagement-rate evidence is unavailable across the current serving catalog. The missingness feature is constant for all candidates and does not distinguish their ranking.</p>
       <h4>Evidence available</h4>
       {explanation.evidence_available?.length ? <ul>{explanation.evidence_available.map(item => <li key={item}>{item}</li>)}</ul> : <p className="muted small">No additional profile evidence was returned.</p>}
       <h4>What we don't know</h4>
@@ -81,6 +81,7 @@ export default function MlRecommendations({ campaign, api }) {
   const [budgetCampaign, setBudgetCampaign] = useState(campaign)
 
   useEffect(() => {
+    if (publicationStatus !== 'open') return undefined
     const controller = new AbortController()
     api(`/campaigns/${campaign.campaignId}/ml-recommendations?top_n=10`, {
       method: 'POST',
@@ -91,7 +92,7 @@ export default function MlRecommendations({ campaign, api }) {
       .catch(reason => { if (!controller.signal.aborted) setError(reason.message || 'Recommendations could not be loaded.') })
       .finally(() => { if (!controller.signal.aborted) setLoading(false) })
     return () => controller.abort()
-  }, [api, campaign.campaignId, refresh])
+  }, [api, campaign.campaignId, publicationStatus, refresh])
 
   function retry() {
     setLoading(true)
@@ -102,6 +103,7 @@ export default function MlRecommendations({ campaign, api }) {
   async function togglePublication() {
     if (publicationBusy) return
     const nextStatus = publicationStatus === 'open' ? 'closed' : 'open'
+    if (nextStatus === 'open') { setLoading(true); setError(''); setData(null) }
     setPublicationBusy(true)
     setPublicationError('')
     try {
@@ -134,11 +136,12 @@ export default function MlRecommendations({ campaign, api }) {
         <div><p className="eyebrow">CREATOR RECOMMENDATIONS</p><h2>{data ? `${data.recommendations.length} creators to consider` : 'Recommended creators'}</h2></div>
         <span className="badge">Model ranking</span>
       </div>
-      <p className="small muted">Scores rank creators in the available catalog; they are not probabilities of success or ROI.</p>
-      {loading && <p className="panel empty" role="status">Finding suitable creators…</p>}
-      {error && <div className="panel empty"><p className="notice error" role="alert">{error}</p><button onClick={retry}>Retry</button></div>}
-      {!loading && !error && data?.recommendations?.length === 0 && <div className="panel empty">No creator catalog matches were returned.</div>}
-      {!loading && !error && data?.recommendations?.length > 0 && <div className="cards">{data.recommendations.map(recommendation => <MlRecommendationCard key={recommendation.creator_username} recommendation={recommendation} />)}</div>}
+      <p className="small muted">Creators are ranked by the trained Logistic Regression recommendation model using campaign/business text and creator profile characteristics. Scores are model ranking values, not calibrated probabilities or performance guarantees. ML catalog identities are separate from registered Bizi creator accounts.</p>
+      {publicationStatus !== 'open' && <p className="notice">Open this campaign to request creator recommendations.</p>}
+      {publicationStatus === 'open' && loading && <p className="panel empty" role="status">Finding suitable creators…</p>}
+      {publicationStatus === 'open' && error && <div className="panel empty"><p className="notice error" role="alert">{error}</p><button onClick={retry}>Retry</button></div>}
+      {publicationStatus === 'open' && !loading && !error && data?.recommendations?.length === 0 && <div className="panel empty">No creator catalog matches were returned.</div>}
+      {publicationStatus === 'open' && !loading && !error && data?.recommendations?.length > 0 && <div className="cards">{data.recommendations.map(recommendation => <MlRecommendationCard key={recommendation.creator_username} recommendation={recommendation} />)}</div>}
     </section>
     <BusinessMarketplace api={api} campaignId={campaign.campaignId} publicationStatus={publicationStatus} campaign={budgetCampaign} onChanged={() => setBudgetRefresh(value => value + 1)} />
   </div>
@@ -147,7 +150,6 @@ export default function MlRecommendations({ campaign, api }) {
 function CampaignBudget({ campaign, api, refreshKey, onSaved }) {
   const [values, setValues] = useState({ totalBudget: campaign.totalBudget || '', currency: campaign.currency || 'KES', targetCreatorCount: campaign.targetCreatorCount || 1 })
   const [current, setCurrent] = useState(campaign)
-  const [refresh, setRefresh] = useState(0)
   const [busy, setBusy] = useState(false), [error, setError] = useState(''), [notice, setNotice] = useState('')
   useEffect(() => {
     const controller = new AbortController()
@@ -155,7 +157,7 @@ function CampaignBudget({ campaign, api, refreshKey, onSaved }) {
       if (!controller.signal.aborted) { setCurrent(value); setValues({ totalBudget: value.totalBudget, currency: value.currency, targetCreatorCount: value.targetCreatorCount }) }
     }).catch(() => {})
     return () => controller.abort()
-  }, [api, campaign.campaignId, refresh, refreshKey])
+  }, [api, campaign.campaignId, refreshKey])
   const estimate = estimatedOffer(values.totalBudget, values.targetCreatorCount)
   const allocated = Number(current.allocatedBudget || 0)
   const filled = Number(current.filledCreatorSlots || 0)
