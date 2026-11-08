@@ -48,8 +48,16 @@ async function login(req, res) {
   }
 }
 
+function getSession(req, res) {
+  return res.status(200).json({
+    userId: req.user.userId,
+    role: req.user.role,
+  });
+}
+
 module.exports = {
   registerBusiness,
   registerCreator,
   login,
+  getSession,
 };

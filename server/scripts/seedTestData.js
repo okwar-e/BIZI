@@ -99,7 +99,11 @@ async function seedCampaign(index, campaign, passwordHash) {
 }
 
 async function seedTestData() {
-  const passwordHash = await bcrypt.hash('SyntheticSeedPassword123!', 10);
+  const seedPassword = process.env.BIZI_TEST_SEED_PASSWORD;
+  if (typeof seedPassword !== 'string' || seedPassword.length < 12) {
+    throw new Error('Set BIZI_TEST_SEED_PASSWORD to a local test password of at least 12 characters.');
+  }
+  const passwordHash = await bcrypt.hash(seedPassword, 10);
   let creatorsSeeded = 0;
   let campaignsSeeded = 0;
 

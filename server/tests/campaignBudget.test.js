@@ -3,6 +3,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const campaignModel = require('../models/campaignModel');
+const db = require('../config/db');
 const { amountToCents, centsToAmount, estimateOfferCents, validateCampaignBudget } = require('../services/campaignBudget');
 
 test('campaign budget accepts bounded currency amounts and validates creator target', () => {
@@ -35,4 +36,21 @@ test('campaign model stores total budget, currency, and target creator count', a
   assert.equal(campaignId, 44);
   assert.match(inserted.sql, /totalBudget, currency, targetCreatorCount/);
   assert.deepEqual(inserted.params.slice(-3), [100000, 'KES', 5]);
+});
+
+test('campaign model binds the default pool query for create and update', async () => {
+  const originalQuery = db.query;
+  const receivers = [];
+  db.query = async function (sql) {
+    receivers.push(this);
+    return [sql.startsWith('INSERT') ? { insertId: 45 } : { affectedRows: 1 }];
+  };
+  try {
+    const fields = { nicheText: 'Food', totalBudget: 1000, currency: 'KES', targetCreatorCount: 2 };
+    assert.equal(await campaignModel.createCampaign(12, fields, { buildEmbedding: async () => null }), 45);
+    assert.equal(await campaignModel.updateCampaign(45, 12, fields, { buildEmbedding: async () => null }), 1);
+  } finally {
+    db.query = originalQuery;
+  }
+  assert.deepEqual(receivers, [db, db]);
 });

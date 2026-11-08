@@ -42,6 +42,7 @@ async function recommendCreators(business, topN = 10, fetchImpl = fetch) {
       signal: AbortSignal.timeout(timeoutMs),
     });
   } catch (error) {
+    console.log(error)
     throw new MlServiceError(
       error?.name === 'TimeoutError'
         ? 'Recommendation service timed out'

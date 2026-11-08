@@ -1,7 +1,7 @@
 'use strict';
 const fs=require('node:fs'),path=require('node:path'),crypto=require('node:crypto');
 const db=require('../config/db'),bcrypt=require('bcrypt');
-const {NAMESPACE}=require('../services/recommendationCohort');
+const NAMESPACE='bizi-complete-300-v1';
 const {makeCreator,categories,platforms,locations,scopes,seed,digest}=require('../services/syntheticCreatorFactory');
 async function run() {
  let connection;

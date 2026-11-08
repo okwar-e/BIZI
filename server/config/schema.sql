@@ -59,16 +59,3 @@ CREATE TABLE IF NOT EXISTS campaigns (
   createdAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (businessId) REFERENCES businesses(businessId) ON DELETE CASCADE
 );
-
-CREATE TABLE IF NOT EXISTS recommendations (
-  recommendationId INT PRIMARY KEY AUTO_INCREMENT,
-  campaignId INT NOT NULL,
-  profileId INT NOT NULL,
-  semanticScore FLOAT NOT NULL,
-  ruleScore FLOAT NOT NULL,
-  finalScore FLOAT NOT NULL,
-  explanationText TEXT,
-  createdAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  FOREIGN KEY (campaignId) REFERENCES campaigns(campaignId) ON DELETE CASCADE,
-  FOREIGN KEY (profileId) REFERENCES creator_profiles(profileId) ON DELETE CASCADE
-);

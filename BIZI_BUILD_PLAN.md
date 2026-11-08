@@ -1,5 +1,5 @@
-# Bizi — Master Build Plan
-Reference document for guiding GitHub Copilot through implementation. This mirrors Chapter 3 of the proposal exactly — no architectural decisions here should contradict it.
+# Bizi — Historical Master Build Plan
+This is the original proposal-aligned plan, not an implementation status document. Some planned architecture below was superseded; use the repository root `README.md` and `DEVELOPMENT_STATUS.md` for current behavior and limitations.
 
 ## Stack (Section 3.8)
 - Frontend: React.js

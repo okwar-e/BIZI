@@ -1,6 +1,30 @@
 import { useEffect, useState } from 'react'
+
 export default function Methodology({ api }) {
-  const [data, setData] = useState(null), [error, setError] = useState('')
-  useEffect(() => { const controller = new AbortController(); api('/assistant/methodology', { signal: controller.signal }).then(value => { if (!controller.signal.aborted) setData(value) }).catch(e => { if (!controller.signal.aborted) setError(e.message) }); return () => controller.abort() }, [api])
-  return <details className="panel methodology"><summary>How Bizi recommends creators</summary>{error && <p role="alert">{error}</p>}{!data && !error && <p>Loading methodology…</p>}{data && <><p className="small muted">Algorithm {data.version}</p><p>{data.formula}</p><div className="table-scroll"><table><thead><tr><th>Goal</th><th>Semantic</th><th>Engagement</th><th>Reach</th><th>Budget</th></tr></thead><tbody>{Object.entries(data.weights).map(([goal, weights]) => <tr key={goal}><th>{goal}</th>{Object.entries(weights).map(([key, weight]) => <td key={key}>{Math.round(weight * 100)}%</td>)}</tr>)}</tbody></table></div>{data.components.map(c => <section key={c.id}><h3>{c.id}</h3><p>{c.text}</p></section>)}<h3>Exclusions</h3><ul>{data.exclusions.map(x => <li key={x}>{x}</li>)}</ul><p>{data.tieBreak}</p><ul>{data.limitations.map(x => <li key={x}>{x}</li>)}</ul></>}</details>
+  const [data, setData] = useState(null)
+  const [error, setError] = useState('')
+
+  useEffect(() => {
+    const controller = new AbortController()
+    api('/assistant/methodology', { signal: controller.signal })
+      .then(value => { if (!controller.signal.aborted) setData(value) })
+      .catch(reason => { if (!controller.signal.aborted) setError(reason.message) })
+    return () => controller.abort()
+  }, [api])
+
+  return <details className="panel methodology">
+    <summary>How Bizi recommends creators</summary>
+    {error && <p role="alert">{error}</p>}
+    {!data && !error && <p role="status">Loading methodology…</p>}
+    {data && <>
+      <p className="small muted">{data.modelType} · {data.version}</p>
+      <p>{data.formula}</p>
+      <h3>Model features</h3>
+      <dl className="components">{data.features.map(feature => <div key={feature.id}>
+        <dt>{feature.id}</dt><dd>{feature.text}</dd>
+      </div>)}</dl>
+      <h3>Limitations</h3>
+      <ul>{data.limitations.map(item => <li key={item}>{item}</li>)}</ul>
+    </>}
+  </details>
 }

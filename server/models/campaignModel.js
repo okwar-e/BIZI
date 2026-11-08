@@ -26,7 +26,8 @@ async function createCampaign(businessId, {
   targetCreatorCount = 1,
 }, options = {}) {
   const nicheEmbedding = await (options.buildEmbedding || buildNicheEmbedding)(nicheText, targetAudience);
-  const [result] = await (options.query || db.query)(
+  const query = options.query || db.query.bind(db);
+  const [result] = await query(
     `INSERT INTO campaigns
      (businessId, nicheText, targetAudience, nicheEmbedding, budgetRange, preferredPlatforms, location, campaignGoal,
       totalBudget, currency, targetCreatorCount)
@@ -101,7 +102,8 @@ async function updateCampaign(campaignId, businessId, {
   targetCreatorCount = 1,
 }, options = {}) {
   const nicheEmbedding = await (options.buildEmbedding || buildNicheEmbedding)(nicheText, targetAudience);
-  const [result] = await (options.query || db.query)(
+  const query = options.query || db.query.bind(db);
+  const [result] = await query(
     `UPDATE campaigns
      SET nicheText = ?, targetAudience = ?, nicheEmbedding = ?, budgetRange = ?, preferredPlatforms = ?, location = ?, campaignGoal = ?,
        totalBudget = ?, currency = ?, targetCreatorCount = ?

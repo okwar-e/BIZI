@@ -189,6 +189,7 @@ function createRouter({ express, db, verifyToken }) {
     try {
       const [campaigns] = await db.query(
         `SELECT c.campaignId, c.nicheText, c.targetAudience, c.budgetRange,
+          c.totalBudget, c.currency, c.targetCreatorCount,
                 c.preferredPlatforms, c.location, c.campaignGoal, c.createdAt, c.publicationStatus,
                 b.businessName, b.industry, a.applicationId, a.createdAt AS applicationCreatedAt, a.status AS applicationStatus
          FROM campaigns c JOIN businesses b ON b.businessId = c.businessId
@@ -216,6 +217,7 @@ function createRouter({ express, db, verifyToken }) {
     try {
       const [rows] = await db.query(
         `SELECT c.campaignId, c.nicheText, c.targetAudience, c.budgetRange,
+          c.totalBudget, c.currency, c.targetCreatorCount,
                 c.preferredPlatforms, c.location, c.campaignGoal, c.createdAt,
                 b.businessName, b.industry, a.applicationId, a.createdAt AS applicationCreatedAt, a.status AS applicationStatus
          FROM campaigns c JOIN businesses b ON b.businessId = c.businessId

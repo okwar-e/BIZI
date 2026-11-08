@@ -2,6 +2,7 @@
 
 const { recommendCreators, MlServiceError } = require('../services/mlRecommendationService');
 const { explainMlRecommendation } = require('../services/groundedAssistant');
+const { sanitizeContactDetails } = require('../services/creatorBio');
 
 function createRouter({ express, db, verifyToken, requireRole, recommend = recommendCreators }) {
   const router = express.Router();
@@ -31,6 +32,9 @@ function createRouter({ express, db, verifyToken, requireRole, recommend = recom
       }
 
       const campaign = rows[0];
+      if (campaign.publicationStatus !== 'open') {
+        return res.status(409).json({ error: 'Open the campaign before requesting creator recommendations' });
+      }
       const brief = typeof campaign.nicheText === 'string' ? campaign.nicheText.trim() : '';
       const industry = typeof campaign.industry === 'string' ? campaign.industry.trim() : '';
       const business = {
@@ -43,10 +47,10 @@ function createRouter({ express, db, verifyToken, requireRole, recommend = recom
       }
 
       const recommendations = await recommend(business, requestedTopN);
-      const explainedRecommendations = recommendations.map(recommendation => ({
-        ...recommendation,
-        explanation: explainMlRecommendation({ business, campaign, recommendation }),
-      }));
+      const explainedRecommendations = recommendations.map(recommendation => {
+        const safeRecommendation = { ...recommendation, creator_bio: sanitizeContactDetails(recommendation.creator_bio) };
+        return { ...safeRecommendation, explanation: explainMlRecommendation({ business, campaign, recommendation: safeRecommendation }) };
+      });
       return res.status(200).json({
         catalog: 'bizi_model_export',
         scoreLabel: 'Recommendation Score',

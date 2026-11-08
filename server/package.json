@@ -6,10 +6,11 @@
   "scripts": {
     "test": "node --test tests/*.test.js",
     "migrate": "node config/runMigration.js",
+    "migrate:assistant": "node scripts/migrateAssistant.js",
     "migrate:creator-platform": "node scripts/migrateCreatorPlatform.js",
     "migrate:campaign-offers": "node scripts/migrateCampaignOffers.js",
-    "seed": "node scripts/seedTestData.js",
-    "demo": "node scripts/demoRecommendations.js"
+    "migrate:demo-support": "node scripts/migrateRecommendationV1.js",
+    "seed": "node scripts/seedTestData.js"
   },
   "keywords": [],
   "author": "",

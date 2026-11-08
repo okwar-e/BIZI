@@ -19,7 +19,7 @@ export default function FloatingAssistant({ api, role, context, onExecuted }) {
   return <div className="assistant-widget">
     <section id="bizi-assistant-window" className="assistant-window" role="dialog" aria-modal="false" aria-labelledby="bizi-assistant-title" hidden={!open}>
       <header className="assistant-window-header"><span className="assistant-avatar-small"><Avatar /></span><div><h2 id="bizi-assistant-title">Bizi assistant</h2><p>Answers and help with your workspace</p></div><button ref={closeButton} type="button" className="assistant-close" aria-label="Minimize Bizi assistant" onClick={close}>×</button></header>
-      <div className="assistant-window-body"><BiziAssistant key={`${role}-${context?.campaignId || 0}-${context?.runId || 0}`} api={api} role={role} context={context} onExecuted={onExecuted} /></div>
+      <div className="assistant-window-body"><BiziAssistant key={`${role}-${context?.campaignId || 0}`} api={api} role={role} context={context} onExecuted={onExecuted} /></div>
     </section>
     <button ref={launcher} className="assistant-launcher" type="button" aria-label={open ? 'Minimize Bizi assistant' : 'Open Bizi assistant'} aria-expanded={open} aria-controls="bizi-assistant-window" onClick={() => { if (open) close(); else setOpen(true) }}><Avatar /><span className="assistant-launcher-tooltip" aria-hidden="true">Ask Bizi</span></button>
   </div>
