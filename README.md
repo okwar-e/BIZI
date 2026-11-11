@@ -16,7 +16,7 @@ The active business recommendation flow is `POST /api/campaigns/:campaignId/ml-r
 
 ## Recommendation Model
 
-The serving model is a trained Logistic Regression classifier. It uses this fixed feature order, matching `server/Bizi_model_export/feature_config.json` and `server/ml/app/predictor.py`:
+The serving model is a trained Random Forest classifier selected by validation Recall@3. Its saved pipeline imputes missing values and uses this fixed feature order, matching `server/Bizi_model_export/feature_config.json` and `server/ml/app/predictor.py`:
 
 1. `text_similarity`
 2. `semantic_similarity`
@@ -25,16 +25,15 @@ The serving model is a trained Logistic Regression classifier. It uses this fixe
 5. `log_creator_post_count`
 6. `baseline_er_missing`
 
-TF-IDF and the saved sentence-transformer produce text and semantic similarities. The saved scaler transforms all six features before the model produces ranking scores. The current serving catalog has no creator-specific historical engagement-rate evidence, so `baseline_er_missing` is 1 for every catalog creator and does not distinguish rankings. Creator bio email/phone contact strings are removed before feature construction and from recommendation responses.
+TF-IDF and the saved sentence-transformer produce text and semantic similarities. The six raw features are passed to the saved Random Forest pipeline, which handles missing values without a separate scaler. The current serving catalog has no creator-specific historical engagement-rate evidence, so `baseline_er_missing` is 1 for every catalog creator and does not distinguish rankings. Creator bio email/phone contact strings are removed before feature construction and from recommendation responses.
 
-Scores are model ranking values, not calibrated probabilities. Recommendations do not guarantee performance, conversions, or campaign outcomes and do not replace business judgement. The repository does not establish the candidate-set methodology behind offline Recall@ claims, so no Recall figure is presented as accuracy.
+Random Forest class-1 scores are ranking values, not calibrated probabilities. The supplied comparison reports test ROC-AUC 0.6538, Recall@1 0.3675, Recall@3 0.7287, and Recall@5 0.8584; these offline metrics are not guarantees of live recommendation quality. Feature importances are global measures across the model training data, not per-creator explanations. Recommendations do not guarantee performance, conversions, or campaign outcomes and do not replace business judgement.
 
 ### Local Model Artifacts
 
 FastAPI expects these files under `server/Bizi_model_export/`:
 
 - `final_model.joblib`
-- `scaler.joblib`
 - `tfidf_vectorizer.joblib`
 - `feature_config.json`
 - `creator_profiles.csv`

@@ -63,19 +63,34 @@ class CreatorPredictor:
             raise ValueError("feature_config.json does not match the required feature order")
 
         self.model = joblib.load(self.artifact_dir / "final_model.joblib")
-        self.scaler = joblib.load(self.artifact_dir / "scaler.joblib")
         self.vectorizer = joblib.load(self.artifact_dir / "tfidf_vectorizer.joblib")
 
-        scaler_features = tuple(getattr(self.scaler, "feature_names_in_", ()))
-        if scaler_features != FEATURE_ORDER:
-            raise ValueError("Saved scaler feature order does not match the required feature order")
         if getattr(self.model, "n_features_in_", None) != len(FEATURE_ORDER):
             raise ValueError("Saved model does not accept exactly six features")
+        model_features = tuple(getattr(self.model, "feature_names_in_", ()))
+        if model_features != FEATURE_ORDER:
+            raise ValueError("Saved model feature order does not match the required feature order")
+        if not callable(getattr(self.model, "predict_proba", None)):
+            raise ValueError("Saved model does not expose class probabilities")
         classes = np.asarray(getattr(self.model, "classes_", []))
         positive_classes = np.flatnonzero(classes == 1)
         if len(positive_classes) != 1:
             raise ValueError("Saved model does not expose a unique positive class labeled 1")
         self.positive_class_index = int(positive_classes[0])
+        classifier = getattr(self.model, "named_steps", {}).get("classifier", self.model)
+        importances = np.asarray(
+            getattr(classifier, "feature_importances_", []), dtype=np.float64
+        )
+        if (
+            importances.shape != (len(FEATURE_ORDER),)
+            or not np.isfinite(importances).all()
+            or (importances < 0).any()
+        ):
+            raise ValueError("Saved model does not expose valid feature importances")
+        self.model_feature_importances = [
+            {"feature": feature, "importance": float(importances[index])}
+            for index, feature in enumerate(FEATURE_ORDER)
+        ]
 
         model_path = self.artifact_dir / "all-MiniLM-L6-v2"
         self.semantic_model = SentenceTransformer(
@@ -157,11 +172,7 @@ class CreatorPredictor:
             raise ValueError("Inference features contain non-finite values")
 
         named_features = pd.DataFrame(feature_matrix, columns=FEATURE_ORDER)
-        scaled_features = self.scaler.transform(named_features)
-        coefficient_values = self.model.coef_[0]
-        contribution_matrix = scaled_features * coefficient_values
-        intercept = float(self.model.intercept_[0])
-        scores = self.model.predict_proba(scaled_features)[:, self.positive_class_index]
+        scores = self.model.predict_proba(named_features)[:, self.positive_class_index]
         if not np.isfinite(scores).all():
             raise ValueError("Model returned non-finite recommendation scores")
 
@@ -186,15 +197,9 @@ class CreatorPredictor:
                         feature: float(feature_matrix[index, feature_index])
                         for feature_index, feature in enumerate(FEATURE_ORDER)
                     },
-                    "model_contributions": [
-                        {
-                            "feature": feature,
-                            "standardized_value": float(scaled_features[index, feature_index]),
-                            "contribution": float(contribution_matrix[index, feature_index]),
-                        }
-                        for feature_index, feature in enumerate(FEATURE_ORDER)
+                    "model_feature_importances": [
+                        dict(item) for item in self.model_feature_importances
                     ],
-                    "model_intercept": intercept,
                 }
             )
         return recommendations

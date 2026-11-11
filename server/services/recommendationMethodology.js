@@ -10,9 +10,9 @@ const features = [
 ];
 
 module.exports = {
-  version: 'bizi-logistic-regression-v1',
-  modelType: 'Trained Logistic Regression recommendation model',
-  formula: 'The Node API sends owned campaign/business text to FastAPI. FastAPI builds the configured six-feature vector, applies the saved scaler, and ranks catalog creators using the saved Logistic Regression model.',
+  version: 'bizi-random-forest-v1',
+  modelType: 'Trained Random Forest recommendation model',
+  formula: 'The Node API sends owned campaign/business text to FastAPI. FastAPI builds the configured six-feature vector and ranks creators using the saved Random Forest pipeline, which imputes missing feature values.',
   features,
   limitations: [
     'Model scores are ranking values, not calibrated probabilities, performance guarantees, or outcome predictions.',

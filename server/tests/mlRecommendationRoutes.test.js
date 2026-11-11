@@ -62,15 +62,14 @@ test('ML route maps existing campaign/business data without app creator IDs', as
         score: 0.7,
         rank: 1,
         feature_values: { text_similarity: 0.4, semantic_similarity: 0.7, baseline_er_missing: 1 },
-        model_contributions: [
-          { feature: 'text_similarity', standardized_value: 0.4, contribution: 0.2 },
-          { feature: 'semantic_similarity', standardized_value: 0.7, contribution: 0.3 },
-          { feature: 'log_creator_followers', standardized_value: 0.1, contribution: 0.01 },
-          { feature: 'log_creator_following', standardized_value: 0.2, contribution: 0.02 },
-          { feature: 'log_creator_post_count', standardized_value: 0.6, contribution: 0.12 },
-          { feature: 'baseline_er_missing', standardized_value: 1, contribution: -0.5 },
+        model_feature_importances: [
+          { feature: 'text_similarity', importance: 0.4 },
+          { feature: 'semantic_similarity', importance: 0.3 },
+          { feature: 'log_creator_followers', importance: 0.1 },
+          { feature: 'log_creator_following', importance: 0.05 },
+          { feature: 'log_creator_post_count', importance: 0.15 },
+          { feature: 'baseline_er_missing', importance: 0 },
         ],
-        model_intercept: -0.1,
       }];
     },
   });
@@ -91,7 +90,7 @@ test('ML route maps existing campaign/business data without app creator IDs', as
   assert.equal('profileId' in response.body.recommendations[0], false);
   assert.match(response.body.creatorIdentity, /not linked to a Bizi creator account/);
   assert.match(response.body.scoreMeaning, /not a probability.*ROI/);
-  assert.match(response.body.recommendations[0].explanation.why_recommended, /positive model contributions from .*text similarity/);
+  assert.match(response.body.recommendations[0].explanation.why_recommended, /random forest model.*global importances/);
   assert.match(response.body.recommendations[0].explanation.unknowns[0], /unavailable across the current serving catalog/);
   assert.match(response.body.recommendations[0].explanation.unknowns[0], /does not distinguish their ranking/);
   assert.ok(response.body.recommendations[0].explanation.citations.some(source => source.id === 'creator-catalog:catalog_creator'));
@@ -120,14 +119,14 @@ test('ML route proxies a real ranked result from the running Python service', as
     assert.equal(typeof recommendation.creator_username, 'string');
     assert.equal(Number.isFinite(recommendation.score), true);
     assert.equal('profileId' in recommendation, false);
-    assert.equal(recommendation.model_contributions.length, 6);
-    assert.equal(recommendation.explanation.model_contributions.length, 5);
+    assert.equal(recommendation.model_feature_importances.length, 6);
+    assert.equal(recommendation.explanation.model_feature_importances.length, 5);
     assert.equal(recommendation.feature_values.baseline_er_missing, 1);
     assert.equal(recommendation.explanation.unknowns.some(item => item.includes('constant for all candidates')), true);
-    const linearDecision = recommendation.model_intercept
-      + recommendation.model_contributions.reduce((sum, item) => sum + item.contribution, 0);
-    const scoreLogit = Math.log(recommendation.score / (1 - recommendation.score));
-    assert.ok(Math.abs(linearDecision - scoreLogit) < 1e-6);
+    assert.ok(recommendation.model_feature_importances.every(item =>
+      Number.isFinite(item.importance) && item.importance >= 0
+    ));
+    assert.ok(recommendation.score >= 0 && recommendation.score <= 1);
     if (index > 0) {
       assert.ok(response.body.recommendations[index - 1].score >= recommendation.score);
     }

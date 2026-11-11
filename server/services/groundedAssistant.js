@@ -30,20 +30,20 @@ const MODEL_FEATURE_LABELS = {
   log_creator_post_count: 'posting activity',
 };
 
-function explainMlRecommendation({ business, campaign, recommendation, modelVersion = 'bizi-logistic-regression-v1' }) {
+function explainMlRecommendation({ business, campaign, recommendation, modelVersion = 'bizi-random-forest-v1' }) {
   const username = recommendation.creator_username;
-  const contributions = Array.isArray(recommendation.model_contributions)
-    ? recommendation.model_contributions
+  const featureImportances = Array.isArray(recommendation.model_feature_importances)
+    ? recommendation.model_feature_importances
     : [];
-  const differentiating = contributions
-    .filter(item => item.feature !== 'baseline_er_missing' && Number.isFinite(item.contribution))
-    .sort((a, b) => b.contribution - a.contribution);
-  const positive = differentiating.filter(item => item.contribution > 0);
+  const differentiating = featureImportances
+    .filter(item => item.feature !== 'baseline_er_missing' && Number.isFinite(item.importance))
+    .sort((a, b) => b.importance - a.importance);
+  const leadingFeatures = differentiating.filter(item => item.importance > 0);
   const evidenceAvailable = [];
   const unknowns = [];
-  const strengths = positive.slice(0, 3).map(item => {
+  const strengths = leadingFeatures.slice(0, 3).map(item => {
     const label = MODEL_FEATURE_LABELS[item.feature];
-    return label ? `${label} contributed positively to the model's ranking score.` : null;
+    return label ? `${label} is among the model's most influential features overall.` : null;
   }).filter(Boolean);
 
   if (recommendation.creator_category) evidenceAvailable.push(`Catalog category: ${recommendation.creator_category}`);
@@ -53,17 +53,16 @@ function explainMlRecommendation({ business, campaign, recommendation, modelVers
   if (recommendation.feature_values?.text_similarity !== undefined) evidenceAvailable.push('Text similarity was computed from the business and creator profile text.');
   if (recommendation.feature_values?.semantic_similarity !== undefined) evidenceAvailable.push('Semantic similarity was computed from the business and creator profile text.');
 
-  const missingContribution = contributions.find(item => item.feature === 'baseline_er_missing');
-  if (missingContribution && recommendation.feature_values?.baseline_er_missing === 1) {
+  if (recommendation.feature_values?.baseline_er_missing === 1) {
     unknowns.push('Engagement-rate evidence is unavailable across the current serving catalog. baseline_er_missing is constant for all candidates and does not distinguish their ranking.');
   }
   if (!recommendation.creator_category) unknowns.push('Creator category is not available in the catalog.');
   if (!recommendation.creator_bio) unknowns.push('Creator bio is not available in the catalog.');
 
-  const focus = positive.slice(0, 2).map(item => MODEL_FEATURE_LABELS[item.feature]).filter(Boolean);
+  const focus = leadingFeatures.slice(0, 2).map(item => MODEL_FEATURE_LABELS[item.feature]).filter(Boolean);
   const whyRecommended = focus.length
-    ? `Ranked ${recommendation.rank} based on positive model contributions from ${focus.join(' and ')}. This is a ranking signal, not a success or ROI prediction.`
-    : `Ranked ${recommendation.rank} by the trained model. No positive differentiating feature contribution is available to summarize.`;
+    ? `Ranked ${recommendation.rank} by the random forest model. Across its training data, the model relies most on ${focus.join(' and ')}; these global importances do not explain this creator's individual score. This is a ranking signal, not a success or ROI prediction.`
+    : `Ranked ${recommendation.rank} by the random forest model. This ranking signal is not a success or ROI prediction.`;
 
   const modelSourceId = `model:${username}`;
   const campaignSourceId = `campaign:${campaign.campaignId}`;
@@ -91,15 +90,14 @@ function explainMlRecommendation({ business, campaign, recommendation, modelVers
       modelVersion,
       score: recommendation.score,
       feature_values: recommendation.feature_values,
-      model_contributions: contributions,
-      model_intercept: recommendation.model_intercept,
+      model_feature_importances: featureImportances,
     }) },
   ];
 
   return {
     why_recommended: whyRecommended,
     strengths,
-    model_contributions: contributions.filter(item => item.feature !== 'baseline_er_missing'),
+    model_feature_importances: featureImportances.filter(item => item.feature !== 'baseline_er_missing'),
     evidence_available: evidenceAvailable,
     unknowns,
     limitations: [
