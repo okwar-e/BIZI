@@ -15,12 +15,25 @@ const campaign = {
   industry: 'Beauty',
   publicationStatus: 'open',
 };
+const creator = {
+  creator_id: 21,
+  creator_username: 'BIZI_CREATOR_21',
+  creator_display_name: 'Creator One',
+  creator_followers: 1200,
+  creator_following: 300,
+  creator_post_count: 84,
+  creator_website: null,
+  creator_category: 'Beauty',
+  creator_bio: 'Beauty creator',
+  is_sample_account: 0,
+};
 
-async function fixture(t, { rows = [campaign], recommend } = {}) {
+async function fixture(t, { rows = [campaign], creatorCandidates = [creator], recommend } = {}) {
   const calls = [];
   const db = {
     query: async (sql, params) => {
       calls.push({ sql, params });
+      if (sql.includes('FROM creators c') && sql.includes('creator_profiles p')) return [creatorCandidates];
       return [rows];
     },
   };
@@ -50,17 +63,19 @@ async function fixture(t, { rows = [campaign], recommend } = {}) {
   };
 }
 
-test('ML route maps existing campaign/business data without app creator IDs', async t => {
+test('ML route ranks creator accounts returned from the database', async t => {
   let received;
   const f = await fixture(t, {
-    recommend: async (business, topN) => {
-      received = { business, topN };
+    recommend: async (business, topN, fetchImpl, options) => {
+      received = { business, topN, fetchImpl, options };
       return [{
+        creator_id: creator.creator_id,
         creator_username: 'catalog_creator',
         creator_category: 'Beauty',
         creator_bio: 'Beauty and skincare creator profile person@example.test',
         score: 0.7,
         rank: 1,
+        is_sample_account: false,
         feature_values: { text_similarity: 0.4, semantic_similarity: 0.7, baseline_er_missing: 1 },
         model_feature_importances: [
           { feature: 'text_similarity', importance: 0.4 },
@@ -83,18 +98,80 @@ test('ML route maps existing campaign/business data without app creator IDs', as
       description: campaign.nicheText,
     },
     topN: 1,
+    fetchImpl: undefined,
+    options: { creators: [{ ...creator, is_sample_account: false }] },
   });
   assert.equal(response.body.recommendations[0].creator_username, 'catalog_creator');
   assert.doesNotMatch(response.body.recommendations[0].creator_bio, /person@example\.test/i);
   assert.match(response.body.recommendations[0].creator_bio, /\[contact removed\]/);
   assert.equal('profileId' in response.body.recommendations[0], false);
-  assert.match(response.body.creatorIdentity, /not linked to a Bizi creator account/);
+  assert.match(response.body.creatorIdentity, /creator accounts stored in Bizi/i);
+  assert.equal(response.body.catalog, 'bizi_creator_accounts');
   assert.match(response.body.scoreMeaning, /not a probability.*ROI/);
   assert.match(response.body.recommendations[0].explanation.why_recommended, /random forest model.*global importances/);
   assert.match(response.body.recommendations[0].explanation.unknowns[0], /unavailable across the current serving catalog/);
   assert.match(response.body.recommendations[0].explanation.unknowns[0], /does not distinguish their ranking/);
   assert.ok(response.body.recommendations[0].explanation.citations.some(source => source.id === 'creator-catalog:catalog_creator'));
   assert.ok(response.body.recommendations[0].explanation.citations.some(source => source.id === 'model:catalog_creator'));
+});
+
+test('ML route ranks dataset-derived creator test accounts as inviteable accounts', async t => {
+  const sample = {
+    creator_id: 73,
+    creator_username: 'dataset_creator',
+    creator_display_name: 'Dataset Creator',
+    creator_followers: 1200,
+    creator_following: 300,
+    creator_post_count: 84,
+    creator_website: null,
+    creator_category: 'Beauty',
+    creator_bio: 'Beauty creator',
+    is_sample_account: 1,
+  };
+  let received;
+  const f = await fixture(t, {
+    creatorCandidates: [sample],
+    recommend: async (business, topN, fetchImpl, options) => {
+      received = { business, topN, fetchImpl, options };
+      return [{
+        ...sample,
+        score: 0.7,
+        rank: 1,
+        is_sample_account: true,
+        feature_values: { text_similarity: 0.4, semantic_similarity: 0.7, baseline_er_missing: 1 },
+        model_feature_importances: [
+          { feature: 'text_similarity', importance: 0.4 },
+          { feature: 'semantic_similarity', importance: 0.3 },
+          { feature: 'log_creator_followers', importance: 0.1 },
+          { feature: 'log_creator_following', importance: 0.05 },
+          { feature: 'log_creator_post_count', importance: 0.15 },
+          { feature: 'baseline_er_missing', importance: 0 },
+        ],
+      }];
+    },
+  });
+
+  const response = await f.request('/42/ml-recommendations?top_n=1');
+  assert.equal(response.status, 200);
+  assert.deepEqual(received.options, { creators: [{ ...sample, is_sample_account: true }] });
+  assert.equal(received.fetchImpl, undefined);
+  assert.equal(response.body.catalog, 'bizi_creator_accounts');
+  assert.match(response.body.creatorIdentity, /test accounts.*can be invited/i);
+  assert.equal(response.body.recommendations[0].creator_id, 73);
+  assert.equal(response.body.recommendations[0].is_sample_account, true);
+});
+
+test('ML route returns an empty account-based result instead of falling back to catalogue identities', async t => {
+  let called = false;
+  const f = await fixture(t, {
+    creatorCandidates: [],
+    recommend: async () => { called = true; throw new Error('must not call ML with no account candidates'); },
+  });
+  const response = await f.request('/42/ml-recommendations');
+  assert.equal(response.status, 200);
+  assert.deepEqual(response.body.recommendations, []);
+  assert.equal(response.body.catalog, 'bizi_creator_accounts');
+  assert.equal(called, false);
 });
 
 test('ML route returns 404 for a campaign not owned by the business', async t => {
@@ -109,11 +186,22 @@ test('ML route proxies a real ranked result from the running Python service', as
   const health = await fetch(`${process.env.BIZI_ML_SERVICE_URL || 'http://127.0.0.1:8001'}/health`);
   assert.equal(health.status, 200, 'Python ML service must be running for this integration test');
 
-  const f = await fixture(t);
+  const creatorCandidates = Array.from({ length: 10 }, (_, index) => ({
+    ...creator,
+    creator_id: index + 1,
+    creator_username: `BIZI_CREATOR_${index + 1}`,
+    creator_followers: index === 0 ? null : creator.creator_followers + index,
+  }));
+  const f = await fixture(t, { creatorCandidates });
   const response = await f.request('/42/ml-recommendations?top_n=10');
   assert.equal(response.status, 200);
   assert.equal(response.body.recommendations.length, 10);
-  assert.equal(response.body.catalog, 'bizi_model_export');
+  assert.equal(response.body.catalog, 'bizi_creator_accounts');
+  assert.equal(response.body.recommendations.some(recommendation =>
+    recommendation.creator_followers === null
+      && recommendation.missing_model_metrics.includes('followers')
+      && recommendation.feature_values.log_creator_followers === 0
+  ), true);
   for (const [index, recommendation] of response.body.recommendations.entries()) {
     assert.equal(recommendation.rank, index + 1);
     assert.equal(typeof recommendation.creator_username, 'string');

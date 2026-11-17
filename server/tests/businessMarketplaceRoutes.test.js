@@ -15,6 +15,7 @@ async function fixture(t, options = {}) {
     applicationStatus: options.applicationStatus || 'pending',
     duplicateInvitation: !!options.duplicateInvitation,
     creatorExists: options.creatorExists !== false,
+    sampleCreator: !!options.sampleCreator,
     acceptedInvitation: !!options.acceptedInvitation,
     acceptedApplication: !!options.acceptedApplication,
     totalBudget: options.totalBudget ?? 100000,
@@ -28,7 +29,7 @@ async function fixture(t, options = {}) {
     calls.push({ sql, params });
     if (sql.startsWith('SELECT role')) return [[{ role: state.role }]];
     if (sql.startsWith('SELECT businessId')) return [[{ businessId: state.businessId }]];
-    if (sql.includes('FROM creators c JOIN users u') && sql.includes('WHERE c.creatorId')) return [state.creatorExists ? [{ creatorId: params[0] }] : []];
+    if (sql.includes('FROM creators c JOIN users u') && sql.includes('WHERE c.creatorId')) return [state.creatorExists ? [{ creatorId: params[0], isDemoProfile: state.sampleCreator }] : []];
     if (sql.startsWith('SELECT campaignId, publicationStatus')) return [state.campaignOwned ? [{ campaignId: params[0], publicationStatus: state.publicationStatus, totalBudget: state.totalBudget, currency: 'KES', targetCreatorCount: state.targetCreatorCount, allocatedBudget: state.allocatedBudget, filledCreatorSlots: state.filledCreatorSlots }] : []];
     if (sql.startsWith('SELECT campaignId, totalBudget')) return [state.campaignOwned && state.publicationStatus === 'open' ? [{ campaignId: params[0], totalBudget: state.totalBudget, currency: 'KES', targetCreatorCount: state.targetCreatorCount }] : []];
     if (sql.startsWith('SELECT campaignId, targetCreatorCount')) return [state.campaignOwned ? [{ campaignId: params[0], targetCreatorCount: state.targetCreatorCount }] : []];
@@ -54,7 +55,10 @@ async function fixture(t, options = {}) {
       applicationId: 4, campaignId: 3, status: 'pending', applicationMessage: 'A brief note',
       creatorId: 31, displayName: 'Creator Example', username: '@creator', niche: 'Food',
       bio: 'Recipe maker', audienceDescription: 'Home cooks', platforms: 'Instagram',
-      location: 'Nairobi', portfolioUrl: null, followerCount: 1234, selfReportedEngagement: 2.4,
+      location: 'Nairobi', audienceLocations: 'Nairobi, Kenya\nMombasa, Kenya',
+      audienceLocationSource: 'SAMPLE analytics', audienceLocationAsOf: '2026-10-01',
+      audienceLocationCoverageComplete: 1,
+      portfolioUrl: null, followerCount: 1234, selfReportedEngagement: 2.4,
     }]];
     if (sql.startsWith('SELECT i.invitationId')) return [[{
       invitationId: 8, campaignId: 3, creatorId: 31, status: 'pending', displayName: 'Creator Example', username: '@creator',
@@ -62,6 +66,8 @@ async function fixture(t, options = {}) {
     if (sql.startsWith('SELECT c.creatorId')) return [[{
       creatorId: 31, displayName: 'Creator Example', username: '@creator', niche: 'Food',
       bio: 'Recipe maker', audienceDescription: 'Home cooks', platforms: 'Instagram', location: 'Nairobi',
+      audienceLocations: 'Nairobi, Kenya', audienceLocationSource: 'SAMPLE analytics',
+      audienceLocationAsOf: '2026-10-01', audienceLocationCoverageComplete: 1,
     }]];
     return [[]];
   }
@@ -102,6 +108,9 @@ test('business can view application creator summary only for its owned campaign'
   assert.equal(result.body[0].displayName, 'Creator Example');
   assert.equal(result.body[0].applicationMessage, 'A brief note');
   assert.equal(result.body[0].selfReportedEngagement, 2.4);
+  assert.equal(result.body[0].location, 'Nairobi');
+  assert.equal(result.body[0].audienceLocations, 'Nairobi, Kenya\nMombasa, Kenya');
+  assert.equal(result.body[0].audienceLocationSource, 'SAMPLE analytics');
   assert.ok(f.calls.some(call => call.params.includes(12)));
 });
 
@@ -148,6 +157,21 @@ test('business can invite a registered creator to its open campaign', async t =>
   assert.equal(manual.status, 201);
   assert.equal(manual.body.offeredAmount, 25000);
   assert.equal(adjusted.state.lastInvitation.params[4], 25000);
+});
+
+test('business can discover and invite dataset-derived creator test accounts', async t => {
+  const f = await fixture(t, { sampleCreator: true });
+  const result = await f.request('/campaigns/3/invitations', { creatorId: 31 });
+  assert.equal(result.status, 201);
+  assert.equal(result.body.creatorId, 31);
+  assert.ok(f.state.lastInvitation);
+  const creatorLookup = f.calls.find(call => call.sql?.includes('WHERE c.creatorId'));
+  assert.doesNotMatch(creatorLookup.sql, /demo_dataset_records/);
+
+  const directory = await fixture(t);
+  assert.equal((await directory.request('/creators')).status, 200);
+  const directoryQuery = directory.calls.find(call => call.sql?.includes('FROM creators c JOIN users u'));
+  assert.doesNotMatch(directoryQuery.sql, /demo_dataset_records/);
 });
 
 test('business invitation rejects closed/unowned campaigns, invalid creators, and duplicate pending invitations', async t => {

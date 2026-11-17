@@ -40,10 +40,13 @@ function createRouter({ express, db, verifyToken }) {
       const [rows] = await db.query(
         `SELECT c.creatorId, u.name AS displayName, c.publicHandle AS username,
                 p.bio, p.niche, p.audienceDescription, p.platforms, p.location,
+                p.audienceLocations, p.audienceLocationSource, p.audienceLocationAsOf,
+                p.audienceLocationCoverageComplete,
                 p.portfolioUrl, p.followerCount, p.selfReportedEngagement
          FROM creators c JOIN users u ON u.userId = c.userId
          LEFT JOIN creator_profiles p ON p.creatorId = c.creatorId
-         WHERE u.role = 'creator' AND (? = '' OR u.name LIKE ? OR c.publicHandle LIKE ? OR p.niche LIKE ?)
+         WHERE u.role = 'creator'
+           AND (? = '' OR u.name LIKE ? OR c.publicHandle LIKE ? OR p.niche LIKE ?)
          ORDER BY u.name LIMIT 100`,
         [search, like, like, like]
       );
@@ -62,13 +65,16 @@ function createRouter({ express, db, verifyToken }) {
       const [rows] = await db.query(
         `SELECT a.applicationId, a.campaignId, a.status, a.applicationMessage, a.createdAt, a.updatedAt,
                 c.creatorId, c.publicHandle AS username, u.name AS displayName,
-                p.bio, p.niche, p.audienceDescription, p.platforms, p.location, p.portfolioUrl,
+                p.bio, p.niche, p.audienceDescription, p.platforms, p.location,
+                p.audienceLocations, p.audienceLocationSource, p.audienceLocationAsOf,
+                p.audienceLocationCoverageComplete, p.portfolioUrl,
                 p.followerCount, p.selfReportedEngagement
          FROM campaign_applications a
          JOIN creators c ON c.creatorId = a.creatorId
          JOIN users u ON u.userId = c.userId AND u.role = 'creator'
          LEFT JOIN creator_profiles p ON p.creatorId = c.creatorId
-         WHERE a.campaignId = ? ORDER BY a.createdAt DESC`,
+         WHERE a.campaignId = ?
+         ORDER BY a.createdAt DESC`,
         [campaignId]
       );
       return res.json(rows);
@@ -158,13 +164,16 @@ function createRouter({ express, db, verifyToken }) {
       const [rows] = await db.query(
         `SELECT i.invitationId, i.campaignId, i.creatorId, i.status, i.offeredAmount, i.invitationMessage,
                 i.expiresAt, i.createdAt, i.respondedAt, ca.currency, c.publicHandle AS username,
-                u.name AS displayName, p.niche, p.bio
+                u.name AS displayName, p.niche, p.bio, p.audienceDescription, p.platforms, p.location,
+                p.audienceLocations, p.audienceLocationSource, p.audienceLocationAsOf,
+                p.audienceLocationCoverageComplete, p.portfolioUrl, p.followerCount, p.selfReportedEngagement
          FROM campaign_invitations i
          JOIN campaigns ca ON ca.campaignId = i.campaignId
          JOIN creators c ON c.creatorId = i.creatorId
          JOIN users u ON u.userId = c.userId AND u.role = 'creator'
          LEFT JOIN creator_profiles p ON p.creatorId = c.creatorId
-         WHERE i.campaignId = ? ORDER BY i.createdAt DESC`,
+         WHERE i.campaignId = ?
+         ORDER BY i.createdAt DESC`,
         [campaignId]
       );
       return res.json(rows);
@@ -199,7 +208,8 @@ function createRouter({ express, db, verifyToken }) {
         return res.status(404).json({ error: 'Open campaign not found' });
       }
       const [creators] = await connection.query(
-        `SELECT c.creatorId FROM creators c JOIN users u ON u.userId = c.userId
+        `SELECT c.creatorId
+         FROM creators c JOIN users u ON u.userId = c.userId
          WHERE c.creatorId = ? AND u.role = 'creator' LIMIT 1`,
         [creatorId]
       );

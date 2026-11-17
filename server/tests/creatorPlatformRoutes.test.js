@@ -16,6 +16,10 @@ async function fixture(t, { role = 'creator', query, invitationStatus = 'pending
       if (sql.includes('AS displayName')) return [[{
         displayName: 'Creator One', username: '@creator-one', niche: 'Food', bio: 'Recipe creator',
         platforms: 'Instagram', location: 'Nairobi', portfolioUrl: null, availability: 'available',
+        audienceLocations: 'Nairobi, Kenya\nMombasa, Kenya',
+        audienceLocationSource: 'SAMPLE insights export',
+        audienceLocationAsOf: '2026-10-01',
+        audienceLocationCoverageComplete: 1,
         preferences: '{}', followerCount: null, selfReportedEngagement: null,
       }]];
       if (sql.startsWith('SELECT status, expiresAt')) return [[{ status: invitationStatus, expiresAt: invitationExpiresAt }]];
@@ -78,6 +82,9 @@ test('creator profile returns only the authenticated creator profile fields', as
   const response = await f.request('/profile');
   assert.equal(response.status, 200);
   assert.equal(response.body.username, '@creator-one');
+  assert.equal(response.body.audienceLocations, 'Nairobi, Kenya\nMombasa, Kenya');
+  assert.equal(response.body.audienceLocationSource, 'SAMPLE insights export');
+  assert.equal(response.body.audienceLocationCoverageComplete, true);
   assert.equal(response.body.profileCompletion, 75);
   assert.equal(f.calls[2].params[0], 17);
   assert.ok(!JSON.stringify(response.body).includes('passwordHash'));
@@ -220,5 +227,76 @@ test('profile validation rejects arbitrary fields and invalid portfolio URLs', (
   assert.equal(validateProfile({ displayName: 'A', username: 'a', bio: 'bio', niche: 'food' }, 'PUT'), null);
   assert.equal(validateProfile({ admin: true }, 'PATCH'), 'Unsupported profile field');
   assert.equal(validateProfile({ portfolioUrl: 'javascript:alert(1)' }, 'PATCH'), 'portfolioUrl must use HTTP or HTTPS');
+  assert.equal(validateProfile({ audienceLocationAsOf: '2026-02-30' }, 'PATCH'), 'audienceLocationAsOf must be a valid YYYY-MM-DD date');
+  assert.equal(validateProfile({ audienceLocationCoverageComplete: 'true' }, 'PATCH'), 'audienceLocationCoverageComplete must be a boolean');
+  assert.equal(validateProfile({ followerCount: 123, followingCount: 45, postCount: 10 }, 'PATCH'), null);
+  assert.match(validateProfile({ postCount: -1 }, 'PATCH'), /non-negative safe integer/);
+  assert.match(validateProfile({ followerCount: 2147483648 }, 'PATCH'), /non-negative safe integer/);
+  assert.equal(validateProfile({
+    audienceLocations: 'Nairobi, Kenya',
+    audienceLocationSource: 'SAMPLE analytics export',
+    audienceLocationAsOf: '2026-10-01',
+    audienceLocationCoverageComplete: true,
+  }, 'PATCH'), null);
   assert.equal(profileCompletion({ displayName: 'A', username: 'a', bio: 'bio', niche: 'food' }), 50);
+});
+
+test('creator profile API persists sample audience locations with provenance and completeness', async t => {
+  const profile = {
+    displayName: 'SAMPLE Creator', username: '@sample-creator', niche: 'Food', bio: 'Sample profile',
+    platforms: 'Instagram', location: 'Nairobi, Kenya', portfolioUrl: null, availability: 'available',
+    audienceLocations: null, audienceLocationSource: null, audienceLocationAsOf: null,
+    audienceLocationCoverageComplete: false, preferences: '{}',
+    followerCount: null, followingCount: null, postCount: null, selfReportedEngagement: null,
+  };
+  let updateParams;
+  const f = await fixture(t, { query: async (sql, params = []) => {
+    if (sql.startsWith('SELECT role')) return [[{ role: 'creator' }]];
+    if (sql.startsWith('SELECT creatorId')) return [[{ creatorId: 17 }]];
+    if (sql.startsWith('SELECT profileId')) return [[{
+      profileId: 9, ...profile, nicheEmbedding: null,
+    }]];
+    if (sql.startsWith('UPDATE creator_profiles')) {
+      updateParams = params;
+      profile.audienceLocations = params[6];
+      profile.audienceLocationSource = params[7];
+      profile.audienceLocationAsOf = params[8];
+      profile.audienceLocationCoverageComplete = params[9];
+      profile.followerCount = params[13];
+      profile.followingCount = params[14];
+      profile.postCount = params[15];
+      return [{ affectedRows: 1 }];
+    }
+    if (sql.includes('AS displayName')) return [[profile]];
+    return [[]];
+  } });
+  const response = await f.request('/profile', {
+    audienceLocations: 'Nairobi, Kenya\nMombasa, Kenya',
+    audienceLocationSource: 'SAMPLE platform insights',
+    audienceLocationAsOf: '2026-10-01',
+    audienceLocationCoverageComplete: true,
+    followerCount: 1200,
+    followingCount: 300,
+    postCount: 84,
+  }, 'PATCH');
+  assert.equal(response.status, 200);
+  assert.deepEqual(updateParams.slice(6, 10), [
+    'Nairobi, Kenya\nMombasa, Kenya', 'SAMPLE platform insights', '2026-10-01', true,
+  ]);
+  assert.equal(response.body.audienceLocationCoverageComplete, true);
+  assert.deepEqual(updateParams.slice(13, 16), [1200, 300, 84]);
+  assert.deepEqual(
+    [response.body.followerCount, response.body.followingCount, response.body.postCount],
+    [1200, 300, 84]
+  );
+});
+
+test('creator cannot mark an empty audience-location list complete', async t => {
+  const f = await fixture(t);
+  const response = await f.request('/profile', {
+    audienceLocations: '',
+    audienceLocationCoverageComplete: true,
+  }, 'PATCH');
+  assert.equal(response.status, 400);
+  assert.match(response.body.error, /locations are required/i);
 });
