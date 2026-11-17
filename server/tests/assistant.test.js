@@ -3,8 +3,8 @@ const test=require('node:test'),assert=require('node:assert/strict');
 const {createOpenRouter}=require('../services/openRouterService');
 const {toolsFor,validateAction,propose}=require('../services/assistantActions');
 const {lexical,cosine,retrieve}=require('../services/assistantRetrieval');
-const {validateCitations,normalizeCitations,redact,chat}=require('../services/biziAssistant');
-const {loadKnowledge}=require('../services/assistantKnowledge');
+const {validateCitations,normalizeCitations,redact,redactContactDetails,chat}=require('../services/biziAssistant');
+const {help,loadKnowledge}=require('../services/assistantKnowledge');
 const actor={userId:7,role:'business'};
 test('tools and arguments cannot cross roles or introduce execution/verification fields',()=>{
  assert.equal(toolsFor('business').length,0);assert.equal(toolsFor('creator').length,2);assert.equal(toolsFor('admin').length,0);
@@ -29,6 +29,15 @@ test('retrieval ranks evidence and preserves honest lexical fallback',async()=>{
 test('generated citations must belong to retrieved sources; credential strings are redacted',()=>{
  const sources=[{id:'help:registration'}];assert.ok(validateCitations('Register here [help:registration]',sources));assert.ok(!validateCitations('Claim [other:user]',sources));assert.ok(!validateCitations('Uncited claim',sources));assert.ok(!validateCitations('Expected ROI 50% [help:registration]',sources));assert.ok(!redact('sk-or-v1-testfake123 Bearer test.token').includes('testfake123'));
 });
+test('assistant recommendation guidance matches the ML page and strips contact details',()=>{
+ const guidance=help.find(item=>item.id==='help:recommendations').text;
+ assert.match(guidance,/business name, industry or content category, and promotion description/);
+ assert.match(guidance,/not inputs to this recommendation ranking/);
+ assert.match(guidance,/not a percentage or a promise of performance/);
+ assert.match(guidance,/registered creator/);
+ assert.equal(redactContactDetails('Email owner@example.test or call +1 (202) 555-0123.'),'Email [contact removed] or call [contact removed].');
+ assert.equal(redactContactDetails('Budget 999999999999.99; followers 1000000000.'),'Budget 999999999999.99; followers 1000000000.');
+});
 test('citation normalization accepts only known source ids, never an invented source',()=>{
  const sources=[{id:'method:formula'}];assert.equal(normalizeCitations('Evidence [sourceId:method:formula]',sources),'Evidence [method:formula]');assert.equal(normalizeCitations('Claim [sourceId:private:other]',sources),'Claim [sourceId:private:other]');assert.ok(!validateCitations(normalizeCitations('Claim [sourceId:private:other]',sources),sources));
 });
@@ -50,6 +59,12 @@ test('creator retrieval cannot query other creator or business data',async()=>{
 });
 test('business retrieval fails closed on an unowned campaign and never fetches legacy runs',async()=>{
  const queries=[],db={query:async(sql)=>{queries.push(sql);return [[]];}};await assert.rejects(loadKnowledge(db,actor,{campaignId:9}),{status:404});assert.ok(queries.every(sql=>!sql.includes('recommendation_runs_v1')));
+});
+test('business assistant context redacts campaign contact details without changing budget statistics',async()=>{
+ const db={query:async()=>[[{campaignId:9,nicheText:'Call 0712345678 or email owner@example.test',totalBudget:999999999999.99,currency:'KES'}]]};
+ const docs=await loadKnowledge(db,actor),campaign=JSON.parse(docs.find(item=>item.id==='campaign:9').text);
+ assert.doesNotMatch(campaign.niche,/0712345678|owner@example\.test/);
+ assert.equal(campaign.totalBudget,999999999999.99);
 });
 test('business assistant cannot generate a legacy recommendation or write a proposal',async()=>{
  let writes=0;const db={query:async(sql)=>{if(sql.startsWith('INSERT'))writes++;return [[]];}};

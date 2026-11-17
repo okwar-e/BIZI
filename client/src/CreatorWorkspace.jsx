@@ -63,8 +63,15 @@ function CreatorProfileEditor({ api, data }) {
       const saved = await api('/creator/profile', { method: 'PATCH', body: {
         displayName: fields.displayName, username: fields.username, bio: fields.bio || '', niche: fields.niche || '',
         audienceDescription: fields.audienceDescription || null,
+        audienceLocations: fields.audienceLocations || null,
+        audienceLocationSource: fields.audienceLocationSource || null,
+        audienceLocationAsOf: fields.audienceLocationAsOf || null,
+        audienceLocationCoverageComplete: Boolean(fields.audienceLocationCoverageComplete),
         platforms: fields.platforms || null, location: fields.location || null, portfolioUrl: fields.portfolioUrl || null,
         availability: fields.availability || null, preferences,
+        followerCount: fields.followerCount == null || fields.followerCount === '' ? null : Number(fields.followerCount),
+        followingCount: fields.followingCount == null || fields.followingCount === '' ? null : Number(fields.followingCount),
+        postCount: fields.postCount == null || fields.postCount === '' ? null : Number(fields.postCount),
       } })
       setFields({ ...saved, preferencesText: JSON.stringify(saved.preferences || {}, null, 2) })
       setMessage('Profile updated.')
@@ -79,12 +86,22 @@ function CreatorProfileEditor({ api, data }) {
       <label className="field"><span>Category / niche</span><input maxLength={255} value={fields.niche || ''} onChange={event => change('niche', event.target.value)} /></label>
       <label className="field"><span>Audience description</span><textarea maxLength={2000} rows={3} value={fields.audienceDescription || ''} onChange={event => change('audienceDescription', event.target.value)} /></label>
       <label className="field"><span>Platforms</span><input maxLength={255} placeholder="Instagram, TikTok" value={fields.platforms || ''} onChange={event => change('platforms', event.target.value)} /></label>
-      <label className="field"><span>Location</span><input maxLength={255} value={fields.location || ''} onChange={event => change('location', event.target.value)} /></label>
+      <label className="field"><span>Creator base location</span><input maxLength={255} value={fields.location || ''} onChange={event => change('location', event.target.value)} /></label>
+      <label className="field"><span>Audience locations</span><textarea maxLength={4000} rows={3} value={fields.audienceLocations || ''} onChange={event => {
+        const value = event.target.value
+        setFields(old => ({ ...old, audienceLocations: value, ...(!value.trim() ? { audienceLocationCoverageComplete: false } : {}) }))
+        setError(''); setMessage('')
+      }} /><span className="small muted">One reported place per line; enter only locations available from your audience insights.</span></label>
+      <label className="field"><span>Audience-location source</span><input maxLength={500} placeholder="For example, platform audience insights" value={fields.audienceLocationSource || ''} onChange={event => change('audienceLocationSource', event.target.value)} /></label>
+      <label className="field"><span>Audience data as of</span><input type="date" value={String(fields.audienceLocationAsOf || '').slice(0, 10)} onChange={event => change('audienceLocationAsOf', event.target.value)} /></label>
+      <label className="field"><span><input type="checkbox" checked={Boolean(fields.audienceLocationCoverageComplete)} onChange={event => change('audienceLocationCoverageComplete', event.target.checked)} /> This is the complete location distribution shown by the source</span></label>
       <label className="field"><span>Portfolio URL</span><input type="url" maxLength={2048} value={fields.portfolioUrl || ''} onChange={event => change('portfolioUrl', event.target.value)} /></label>
       <label className="field"><span>Availability</span><select value={fields.availability || ''} onChange={event => change('availability', event.target.value)}><option value="">Not specified</option><option value="available">Available</option><option value="limited">Limited</option><option value="unavailable">Unavailable</option></select></label>
+      <label className="field"><span>Follower count</span><input type="number" min="0" max="2147483647" step="1" value={fields.followerCount ?? ''} onChange={event => change('followerCount', event.target.value)} /></label>
+      <label className="field"><span>Following count</span><input type="number" min="0" max="9007199254740991" step="1" value={fields.followingCount ?? ''} onChange={event => change('followingCount', event.target.value)} /></label>
+      <label className="field"><span>Post count</span><input type="number" min="0" max="9007199254740991" step="1" value={fields.postCount ?? ''} onChange={event => change('postCount', event.target.value)} /></label>
       <label className="field creator-preferences"><span>Preferences (JSON)</span><textarea rows={4} value={fields.preferencesText} onChange={event => change('preferencesText', event.target.value)} /></label>
-      {(data.followerCount != null || data.selfReportedEngagement != null) && <p className="muted small">Existing self-reported metrics: {data.followerCount != null ? `${Number(data.followerCount).toLocaleString()} followers` : 'follower count not provided'}{data.selfReportedEngagement != null ? ` · ${data.selfReportedEngagement}% engagement` : ''}. These are not verified platform analytics.</p>}
-      <p className="muted small">This profile form does not create or verify audience metrics.</p>
+      <p className="muted small">Follower, following, and post counts are self-reported and are not verified platform analytics. Missing counts remain unlisted; the recommendation model treats missing counts as zero only for its numeric input.</p>
       <Notice error>{error}</Notice><Notice>{message}</Notice><button className="primary" disabled={busy}>{busy ? 'Saving…' : 'Save profile'}</button>
     </form>
   </section>
@@ -106,14 +123,14 @@ function CampaignList({ api }) {
     <form className="creator-filter-form" onSubmit={event => { event.preventDefault(); setApplied(filters) }}>
       <label className="field"><span>Category</span><input value={filters.category} onChange={event => setFilters(old => ({ ...old, category: event.target.value }))} /></label>
       <label className="field"><span>Platform</span><input value={filters.platform} onChange={event => setFilters(old => ({ ...old, platform: event.target.value }))} /></label>
-      <label className="field"><span>Location</span><input value={filters.location} onChange={event => setFilters(old => ({ ...old, location: event.target.value }))} /></label>
+      <label className="field"><span>Campaign location</span><input value={filters.location} onChange={event => setFilters(old => ({ ...old, location: event.target.value }))} /></label>
       <label className="field"><span>Objective</span><input value={filters.objective} onChange={event => setFilters(old => ({ ...old, objective: event.target.value }))} /></label>
       <button>Filter campaigns</button>
     </form>
     {loading && <p role="status">Loading open campaigns…</p>}{error && <><Notice error>{error}</Notice><button onClick={reload}>Retry</button></>}
     {!loading && !error && !campaigns?.length && <div className="creator-empty"><h2>No open campaigns yet</h2><p className="muted">Campaigns appear here when a business publishes them.</p></div>}
     <div className="creator-campaign-list">{campaigns?.map(campaign => <article className="creator-campaign-row" key={campaign.campaignId}>
-      <div><h2>{campaign.nicheText}</h2><p>{campaign.businessName}{campaign.industry ? ` · ${campaign.industry}` : ''}</p><p className="muted small">{campaign.campaignGoal || 'Objective not specified'} · {campaign.preferredPlatforms || 'Platform not specified'} · {campaign.location || 'Location not specified'}</p>{Number(campaign.totalBudget) > 0 && <p className="muted small">Campaign budget: {formatMoney(campaign.totalBudget, campaign.currency)} · Target creators: {campaign.targetCreatorCount} · Estimated starting offer: {formatMoney(estimatedOffer(campaign.totalBudget, campaign.targetCreatorCount), campaign.currency)}</p>}{campaign.budgetRange && <p className="muted small">Budget range: {campaign.budgetRange}</p>}{campaign.applicationStatus && <span className="badge">Application: {campaign.applicationStatus}</span>}</div>
+      <div><h2>{campaign.nicheText}</h2><p>{campaign.businessName}{campaign.industry ? ` · ${campaign.industry}` : ''}</p><p className="muted small">{campaign.campaignGoal || 'Objective not specified'} · {campaign.preferredPlatforms || 'Platform not specified'} · Campaign location: {campaign.campaignLocation || 'Not specified'}{campaign.location ? ` · Legacy location filter: ${campaign.location}` : ''}</p>{campaign.matchAudienceMarket && <p className="muted small">Target market: {campaign.targetMarket || 'Not specified'}</p>}{Number(campaign.totalBudget) > 0 && <p className="muted small">Campaign budget: {formatMoney(campaign.totalBudget, campaign.currency)} · Target creators: {campaign.targetCreatorCount} · Estimated starting offer: {formatMoney(estimatedOffer(campaign.totalBudget, campaign.targetCreatorCount), campaign.currency)}</p>}{campaign.budgetRange && <p className="muted small">Budget range: {campaign.budgetRange}</p>}{campaign.applicationStatus && <span className="badge">Application: {campaign.applicationStatus}</span>}</div>
       <Link className="button-link" to={`/creator/campaigns/${campaign.campaignId}`}>View campaign</Link>
     </article>)}</div>
   </section>
@@ -136,7 +153,10 @@ function CampaignDetail({ api, campaignId }) {
     {campaign.industry && <p><strong>Category:</strong> {campaign.industry}</p>}
     {campaign.targetAudience && <p><strong>Target audience:</strong> {campaign.targetAudience}</p>}{campaign.campaignGoal && <p><strong>Objective:</strong> {campaign.campaignGoal}</p>}
     {Number(campaign.totalBudget) > 0 && <p><strong>Campaign budget:</strong> {formatMoney(campaign.totalBudget, campaign.currency)} · Target creators: {campaign.targetCreatorCount} · Estimated starting offer: {formatMoney(estimatedOffer(campaign.totalBudget, campaign.targetCreatorCount), campaign.currency)}. This estimate is derived from the campaign budget, not a creator's market rate.</p>}
-    {campaign.budgetRange && <p><strong>Budget range:</strong> {campaign.budgetRange}</p>}<p className="muted">{campaign.preferredPlatforms || 'Platform not specified'} · {campaign.location || 'Location not specified'}</p>
+    {campaign.budgetRange && <p><strong>Budget range:</strong> {campaign.budgetRange}</p>}<p className="muted">{campaign.preferredPlatforms || 'Platform not specified'}</p>
+    {campaign.campaignLocation && <p><strong>Campaign location:</strong> {campaign.campaignLocation}{campaign.matchPhysicalLocation ? ' (creator base-location alignment considered)' : ''}</p>}
+    {campaign.targetMarket && <p><strong>Target market:</strong> {campaign.targetMarket}{campaign.matchAudienceMarket ? ' (audience-market alignment considered)' : ''}</p>}
+    {campaign.location && <p className="small muted">Legacy location filter: {campaign.location}. This is not used as a geographic suitability signal.</p>}
     {campaign.applicationStatus ? <p className="notice">Application status: {campaign.applicationStatus}{campaign.applicationCreatedAt ? ` · Applied ${new Date(campaign.applicationCreatedAt).toLocaleDateString()}` : ''}</p> : <>
       <label className="field"><span>Application message (optional)</span><textarea maxLength={2000} rows={4} value={message} onChange={event => setMessage(event.target.value)} /></label>
       <Notice error>{failure}</Notice><Notice>{feedback}</Notice><button className="primary" disabled={busy} onClick={apply}>{busy ? 'Submitting…' : 'Apply to campaign'}</button>

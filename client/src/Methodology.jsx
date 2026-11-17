@@ -1,30 +1,8 @@
-import { useEffect, useState } from 'react'
-
-export default function Methodology({ api }) {
-  const [data, setData] = useState(null)
-  const [error, setError] = useState('')
-
-  useEffect(() => {
-    const controller = new AbortController()
-    api('/assistant/methodology', { signal: controller.signal })
-      .then(value => { if (!controller.signal.aborted) setData(value) })
-      .catch(reason => { if (!controller.signal.aborted) setError(reason.message) })
-    return () => controller.abort()
-  }, [api])
-
+export default function Methodology() {
   return <details className="panel methodology">
-    <summary>How Bizi recommends creators</summary>
-    {error && <p role="alert">{error}</p>}
-    {!data && !error && <p role="status">Loading methodology…</p>}
-    {data && <>
-      <p className="small muted">{data.modelType} · {data.version}</p>
-      <p>{data.formula}</p>
-      <h3>Model features</h3>
-      <dl className="components">{data.features.map(feature => <div key={feature.id}>
-        <dt>{feature.id}</dt><dd>{feature.text}</dd>
-      </div>)}</dl>
-      <h3>Limitations</h3>
-      <ul>{data.limitations.map(item => <li key={item}>{item}</li>)}</ul>
-    </>}
+    <summary>How Bizi suggests creators</summary>
+    <p>Bizi compares your business name, industry or content category, and promotion description with text in creator profiles. It also considers available catalogue statistics, such as follower count, following count and number of posts.</p>
+    <p>A match score is a guide to how strongly a creator is ranked for your promotion based on those details. It is not a percentage or a promise of campaign performance, sales, reach or return on investment.</p>
+    <p className="small muted">Suggested profiles come from Bizi's recommendation catalogue and may not be linked to registered Bizi creator accounts. You can send invitations only to registered Bizi creators.</p>
   </details>
 }

@@ -15,7 +15,10 @@ async function upsertProfile(req, res) {
     return res.status(403).json({ error: 'Forbidden' });
   }
 
-  const { niche, audienceDescription, platforms, location } = req.body;
+  const {
+    niche, audienceDescription, platforms, location, audienceLocations,
+    audienceLocationSource, audienceLocationAsOf, audienceLocationCoverageComplete,
+  } = req.body;
 
   if (typeof niche !== 'string' || niche.trim().length === 0) {
     return res.status(400).json({ error: 'niche is required' });
@@ -23,6 +26,27 @@ async function upsertProfile(req, res) {
 
   if (typeof audienceDescription !== 'string' || audienceDescription.trim().length === 0) {
     return res.status(400).json({ error: 'audienceDescription is required' });
+  }
+  if (audienceLocations !== undefined && audienceLocations !== null
+    && (typeof audienceLocations !== 'string' || audienceLocations.trim().length > 4000)) {
+    return res.status(400).json({ error: 'audienceLocations must be a string of 4000 characters or fewer' });
+  }
+  if (audienceLocationSource !== undefined && audienceLocationSource !== null
+    && (typeof audienceLocationSource !== 'string' || audienceLocationSource.trim().length > 500)) {
+    return res.status(400).json({ error: 'audienceLocationSource must be a string of 500 characters or fewer' });
+  }
+  if (audienceLocationAsOf !== undefined && audienceLocationAsOf !== null && audienceLocationAsOf !== '') {
+    if (typeof audienceLocationAsOf !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(audienceLocationAsOf)
+      || Number.isNaN(Date.parse(`${audienceLocationAsOf}T00:00:00Z`))
+      || new Date(`${audienceLocationAsOf}T00:00:00Z`).toISOString().slice(0, 10) !== audienceLocationAsOf) {
+      return res.status(400).json({ error: 'audienceLocationAsOf must be a valid YYYY-MM-DD date' });
+    }
+  }
+  if (audienceLocationCoverageComplete !== undefined && typeof audienceLocationCoverageComplete !== 'boolean') {
+    return res.status(400).json({ error: 'audienceLocationCoverageComplete must be a boolean' });
+  }
+  if (audienceLocationCoverageComplete === true && !audienceLocations?.trim()) {
+    return res.status(400).json({ error: 'Audience locations are required when marking the distribution complete' });
   }
 
   try {
@@ -36,6 +60,10 @@ async function upsertProfile(req, res) {
       audienceDescription,
       platforms,
       location,
+      audienceLocations,
+      audienceLocationSource,
+      audienceLocationAsOf: audienceLocationAsOf || null,
+      audienceLocationCoverageComplete,
     });
 
     return res.status(200).json({ profileId });

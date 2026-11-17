@@ -1,9 +1,13 @@
 'use strict';
 
+const { validateCampaignApplication } = require('../services/campaignApplication');
+
 const allowedAvailability = new Set(['available', 'limited', 'unavailable']);
 const profileFields = new Set([
   'displayName', 'username', 'bio', 'niche', 'audienceDescription', 'location', 'platforms',
-  'portfolioUrl', 'availability', 'preferences',
+  'audienceLocations', 'audienceLocationSource', 'audienceLocationAsOf',
+  'audienceLocationCoverageComplete', 'portfolioUrl', 'availability', 'preferences',
+  'followerCount', 'followingCount', 'postCount',
 ]);
 
 function parsePreferences(value) {
@@ -12,6 +16,10 @@ function parsePreferences(value) {
     try { return JSON.parse(value); } catch { return null; }
   }
   return value;
+}
+
+function booleanValue(value) {
+  return value === true || value === 1 || value === '1';
 }
 
 function profileCompletion(profile) {
@@ -28,15 +36,37 @@ function validateProfile(body, method) {
     return 'displayName, username, bio, and niche are required';
   }
 
-  const limits = { displayName: 255, username: 255, bio: 5000, niche: 255, audienceDescription: 2000, location: 255, platforms: 255, portfolioUrl: 2048 };
+  const limits = {
+    displayName: 255, username: 255, bio: 5000, niche: 255, audienceDescription: 2000,
+    location: 255, platforms: 255, audienceLocations: 4000, audienceLocationSource: 500,
+    portfolioUrl: 2048,
+  };
   for (const [key, limit] of Object.entries(limits)) {
     const value = body[key];
     if (value !== undefined && value !== null && (typeof value !== 'string' || value.trim().length > limit)) {
       return `${key} must be a string of ${limit} characters or fewer`;
     }
   }
+  if (body.audienceLocationCoverageComplete !== undefined && typeof body.audienceLocationCoverageComplete !== 'boolean') {
+    return 'audienceLocationCoverageComplete must be a boolean';
+  }
+  if (body.audienceLocationAsOf !== undefined && body.audienceLocationAsOf !== null && body.audienceLocationAsOf !== '') {
+    const value = body.audienceLocationAsOf;
+    if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)
+      || Number.isNaN(Date.parse(`${value}T00:00:00Z`))
+      || new Date(`${value}T00:00:00Z`).toISOString().slice(0, 10) !== value) {
+      return 'audienceLocationAsOf must be a valid YYYY-MM-DD date';
+    }
+  }
   if (body.availability !== undefined && body.availability !== null && !allowedAvailability.has(body.availability)) {
     return 'availability is invalid';
+  }
+  for (const key of ['followerCount', 'followingCount', 'postCount']) {
+    const value = body[key];
+    if (value !== undefined && value !== null
+      && (!Number.isSafeInteger(value) || value < 0 || (key === 'followerCount' && value > 2147483647))) {
+      return `${key} must be a non-negative safe integer`;
+    }
   }
   if (body.portfolioUrl) {
     try {
@@ -72,8 +102,11 @@ function createRouter({ express, db, verifyToken }) {
     try {
       const [rows] = await db.query(
         `SELECT u.name AS displayName, c.publicHandle AS username,
-                p.niche, p.audienceDescription, p.bio, p.platforms, p.location, p.portfolioUrl,
-                p.availability, p.preferences, p.followerCount, p.selfReportedEngagement
+                p.niche, p.audienceDescription, p.audienceLocations, p.audienceLocationSource,
+                p.audienceLocationAsOf, p.audienceLocationCoverageComplete,
+                p.bio, p.platforms, p.location, p.portfolioUrl,
+                p.availability, p.preferences, p.followerCount, p.followingCount, p.postCount,
+                p.selfReportedEngagement
          FROM creators c JOIN users u ON u.userId = c.userId
          LEFT JOIN creator_profiles p ON p.creatorId = c.creatorId
          WHERE c.creatorId = ? LIMIT 1`,
@@ -81,6 +114,7 @@ function createRouter({ express, db, verifyToken }) {
       );
       if (!rows.length) return res.status(404).json({ error: 'Creator not found' });
       const profile = { ...rows[0], preferences: parsePreferences(rows[0].preferences) };
+      profile.audienceLocationCoverageComplete = booleanValue(rows[0].audienceLocationCoverageComplete);
       profile.profileCompletion = profileCompletion(profile);
       return res.json(profile);
     } catch {
@@ -104,7 +138,11 @@ function createRouter({ express, db, verifyToken }) {
         await connection.query('UPDATE creators SET publicHandle = ? WHERE creatorId = ?', [body.username.trim(), req.creatorId]);
       }
       const [existing] = await connection.query(
-        'SELECT profileId, niche, audienceDescription, nicheEmbedding, platforms, location, bio, portfolioUrl, availability, preferences FROM creator_profiles WHERE creatorId = ? LIMIT 1',
+        `SELECT profileId, niche, audienceDescription, nicheEmbedding, platforms, location, bio,
+                audienceLocations, audienceLocationSource, audienceLocationAsOf,
+                audienceLocationCoverageComplete, portfolioUrl, availability, preferences,
+                followerCount, followingCount, postCount
+         FROM creator_profiles WHERE creatorId = ? LIMIT 1`,
         [req.creatorId]
       );
       const old = existing[0] || {};
@@ -113,13 +151,40 @@ function createRouter({ express, db, verifyToken }) {
         audienceDescription: old.audienceDescription || null,
         platforms: old.platforms || null,
         location: old.location || null,
+        audienceLocations: old.audienceLocations || null,
+        audienceLocationSource: old.audienceLocationSource || null,
+        audienceLocationAsOf: old.audienceLocationAsOf || null,
+        audienceLocationCoverageComplete: booleanValue(old.audienceLocationCoverageComplete),
         bio: old.bio || null,
         portfolioUrl: old.portfolioUrl || null,
         availability: old.availability || null,
         preferences: parsePreferences(old.preferences),
+        followerCount: old.followerCount == null ? null : Number(old.followerCount),
+        followingCount: old.followingCount == null ? null : Number(old.followingCount),
+        postCount: old.postCount == null ? null : Number(old.postCount),
       };
-      for (const key of ['niche', 'audienceDescription', 'platforms', 'location', 'bio', 'portfolioUrl', 'availability', 'preferences']) {
-        if (body[key] !== undefined) current[key] = typeof body[key] === 'string' ? body[key].trim() || null : body[key];
+      for (const key of ['niche', 'audienceDescription', 'platforms', 'location', 'bio',
+        'audienceLocations', 'audienceLocationSource', 'audienceLocationAsOf',
+        'audienceLocationCoverageComplete', 'portfolioUrl', 'availability', 'preferences',
+        'followerCount', 'followingCount', 'postCount']) {
+        if (body[key] !== undefined) {
+          current[key] = typeof body[key] === 'string'
+            ? body[key].trim() || null
+            : body[key];
+        }
+      }
+      if (body.audienceLocations !== undefined && !current.audienceLocations) {
+        if (body.audienceLocationCoverageComplete === true) {
+          await connection.rollback();
+          return res.status(400).json({ error: 'Audience locations are required when marking the distribution complete' });
+        }
+        current.audienceLocationCoverageComplete = false;
+        if (body.audienceLocationSource === undefined) current.audienceLocationSource = null;
+        if (body.audienceLocationAsOf === undefined) current.audienceLocationAsOf = null;
+      }
+      if (current.audienceLocationCoverageComplete && !current.audienceLocations) {
+        await connection.rollback();
+        return res.status(400).json({ error: 'Audience locations are required when marking the distribution complete' });
       }
       const audienceDescription = current.audienceDescription;
       let nicheEmbedding = old.nicheEmbedding || null;
@@ -131,19 +196,26 @@ function createRouter({ express, db, verifyToken }) {
         } catch { nicheEmbedding = null; }
       }
       const values = [req.creatorId, current.niche, audienceDescription, nicheEmbedding,
-        current.platforms, current.location, current.bio, current.portfolioUrl,
-        current.availability, current.preferences == null ? null : JSON.stringify(current.preferences)];
+        current.platforms, current.location, current.bio, current.audienceLocations,
+        current.audienceLocationSource, current.audienceLocationAsOf,
+        current.audienceLocationCoverageComplete, current.portfolioUrl,
+        current.availability, current.preferences == null ? null : JSON.stringify(current.preferences),
+        current.followerCount, current.followingCount, current.postCount];
       if (existing.length) {
         await connection.query(
           `UPDATE creator_profiles SET niche = ?, audienceDescription = ?, nicheEmbedding = ?, platforms = ?, location = ?,
-           bio = ?, portfolioUrl = ?, availability = ?, preferences = ? WHERE profileId = ?`,
+           bio = ?, audienceLocations = ?, audienceLocationSource = ?, audienceLocationAsOf = ?,
+           audienceLocationCoverageComplete = ?, portfolioUrl = ?, availability = ?, preferences = ?,
+           followerCount = ?, followingCount = ?, postCount = ? WHERE profileId = ?`,
           [...values.slice(1), existing[0].profileId]
         );
       } else {
         await connection.query(
           `INSERT INTO creator_profiles
-           (creatorId, niche, audienceDescription, nicheEmbedding, platforms, location, bio, portfolioUrl, availability, preferences)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+           (creatorId, niche, audienceDescription, nicheEmbedding, platforms, location, bio,
+            audienceLocations, audienceLocationSource, audienceLocationAsOf, audienceLocationCoverageComplete,
+            portfolioUrl, availability, preferences, followerCount, followingCount, postCount)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           values
         );
       }
@@ -190,19 +262,21 @@ function createRouter({ express, db, verifyToken }) {
       const [campaigns] = await db.query(
         `SELECT c.campaignId, c.nicheText, c.targetAudience, c.budgetRange,
           c.totalBudget, c.currency, c.targetCreatorCount,
-                c.preferredPlatforms, c.location, c.campaignGoal, c.createdAt, c.publicationStatus,
+              c.preferredPlatforms, c.location, c.campaignLocation, c.targetMarket,
+              c.matchPhysicalLocation, c.matchAudienceMarket,
+              c.campaignGoal, c.createdAt, c.publicationStatus,
                 b.businessName, b.industry, a.applicationId, a.createdAt AS applicationCreatedAt, a.status AS applicationStatus
          FROM campaigns c JOIN businesses b ON b.businessId = c.businessId
          LEFT JOIN campaign_applications a ON a.campaignId = c.campaignId AND a.creatorId = ?
          WHERE c.publicationStatus = 'open' AND b.userId <> ?
            AND (? = '' OR b.industry LIKE ? OR c.nicheText LIKE ?)
            AND (? = '' OR c.preferredPlatforms LIKE ?)
-           AND (? = '' OR c.location LIKE ?)
+           AND (? = '' OR c.location LIKE ? OR c.campaignLocation LIKE ?)
            AND (? = '' OR c.campaignGoal LIKE ?)
          ORDER BY c.createdAt DESC`,
         [req.creatorId, req.user.userId,
           filters.category, `%${filters.category}%`, `%${filters.category}%`,
-          filters.platform, `%${filters.platform}%`, filters.location, `%${filters.location}%`,
+          filters.platform, `%${filters.platform}%`, filters.location, `%${filters.location}%`, `%${filters.location}%`,
           filters.objective, `%${filters.objective}%`]
       );
       return res.json(campaigns);
@@ -218,7 +292,8 @@ function createRouter({ express, db, verifyToken }) {
       const [rows] = await db.query(
         `SELECT c.campaignId, c.nicheText, c.targetAudience, c.budgetRange,
           c.totalBudget, c.currency, c.targetCreatorCount,
-                c.preferredPlatforms, c.location, c.campaignGoal, c.createdAt,
+              c.preferredPlatforms, c.location, c.campaignLocation, c.targetMarket,
+              c.matchPhysicalLocation, c.matchAudienceMarket, c.campaignGoal, c.createdAt,
                 b.businessName, b.industry, a.applicationId, a.createdAt AS applicationCreatedAt, a.status AS applicationStatus
          FROM campaigns c JOIN businesses b ON b.businessId = c.businessId
          LEFT JOIN campaign_applications a ON a.campaignId = c.campaignId AND a.creatorId = ?
@@ -243,27 +318,14 @@ function createRouter({ express, db, verifyToken }) {
     try {
       connection = await db.getConnection();
       await connection.beginTransaction();
-      const [openCampaign] = await connection.query(
-        `SELECT c.campaignId FROM campaigns c JOIN businesses b ON b.businessId = c.businessId
-         WHERE c.campaignId = ? AND c.publicationStatus = 'open' AND b.userId <> ? LIMIT 1 FOR UPDATE`,
-        [campaignId, req.user.userId]
-      );
-      if (!openCampaign.length) {
+      const validationError = await validateCampaignApplication(connection, {
+        campaignId,
+        creatorId: req.creatorId,
+        applicantUserId: req.user.userId,
+      });
+      if (validationError) {
         await connection.rollback();
-        return res.status(404).json({ error: 'Campaign not found' });
-      }
-      const [profiles] = await connection.query('SELECT profileId FROM creator_profiles WHERE creatorId = ? LIMIT 1', [req.creatorId]);
-      if (!profiles.length) {
-        await connection.rollback();
-        return res.status(400).json({ error: 'Complete your creator profile before applying' });
-      }
-      const [acceptedInvitations] = await connection.query(
-        "SELECT invitationId FROM campaign_invitations WHERE campaignId = ? AND creatorId = ? AND status = 'accepted' LIMIT 1",
-        [campaignId, req.creatorId]
-      );
-      if (acceptedInvitations.length) {
-        await connection.rollback();
-        return res.status(409).json({ error: 'You already accepted an invitation for this campaign' });
+        return res.status(validationError.statusCode).json({ error: validationError.error });
       }
       const [result] = await connection.query(
         "INSERT INTO campaign_applications (campaignId, creatorId, applicationMessage, status) VALUES (?, ?, ?, 'pending')",
@@ -284,7 +346,8 @@ function createRouter({ express, db, verifyToken }) {
     try {
       const [rows] = await db.query(
         `SELECT a.applicationId, a.campaignId, a.status, a.applicationMessage, a.createdAt, a.updatedAt,
-                c.nicheText, c.campaignGoal, b.businessName
+                c.nicheText, c.campaignGoal, c.campaignLocation, c.targetMarket,
+                c.matchPhysicalLocation, c.matchAudienceMarket, b.businessName
          FROM campaign_applications a
          JOIN campaigns c ON c.campaignId = a.campaignId
          JOIN businesses b ON b.businessId = c.businessId
@@ -319,7 +382,9 @@ function createRouter({ express, db, verifyToken }) {
       const [rows] = await db.query(
         `SELECT i.invitationId, i.campaignId, i.status, i.invitationMessage, i.expiresAt, i.createdAt, i.respondedAt,
                 i.offeredAmount, c.currency,
-                c.nicheText, c.targetAudience, c.budgetRange, c.campaignGoal, c.preferredPlatforms, c.location, b.businessName
+                c.nicheText, c.targetAudience, c.budgetRange, c.campaignGoal, c.preferredPlatforms,
+                c.location, c.campaignLocation, c.targetMarket, c.matchPhysicalLocation, c.matchAudienceMarket,
+                b.businessName
          FROM campaign_invitations i
          JOIN campaigns c ON c.campaignId = i.campaignId
          JOIN businesses b ON b.businessId = c.businessId

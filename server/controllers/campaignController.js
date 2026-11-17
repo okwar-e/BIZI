@@ -16,6 +16,7 @@ function hasRequiredNicheText(nicheText) {
 }
 
 function getCampaignFields(body) {
+  body = body && typeof body === 'object' && !Array.isArray(body) ? body : {};
   const {
     nicheText,
     targetAudience,
@@ -24,6 +25,18 @@ function getCampaignFields(body) {
     location,
     campaignGoal,
   } = body;
+
+  for (const [key, limit] of [['campaignLocation', 255], ['targetMarket', 255]]) {
+    if (body[key] !== undefined && body[key] !== null
+      && (typeof body[key] !== 'string' || body[key].trim().length > limit)) {
+      return { error: `${key} must be a string of ${limit} characters or fewer` };
+    }
+  }
+  for (const key of ['matchPhysicalLocation', 'matchAudienceMarket']) {
+    if (body[key] !== undefined && typeof body[key] !== 'boolean') {
+      return { error: `${key} must be a boolean` };
+    }
+  }
 
   const budget = validateCampaignBudget(body, { allowDefaults: true });
   if (budget.error) return budget;
@@ -34,11 +47,25 @@ function getCampaignFields(body) {
     budgetRange,
     preferredPlatforms,
     location,
+    campaignLocation: typeof body.campaignLocation === 'string' ? body.campaignLocation.trim() || null : null,
+    targetMarket: typeof body.targetMarket === 'string' ? body.targetMarket.trim() || null : null,
+    matchPhysicalLocation: body.matchPhysicalLocation === true,
+    matchAudienceMarket: body.matchAudienceMarket === true,
     campaignGoal,
     totalBudget: budget.value.totalBudget,
     currency: budget.value.currency,
     targetCreatorCount: budget.value.targetCreatorCount,
   } };
+}
+
+function validateGeographicRequirements(fields) {
+  if (fields.matchPhysicalLocation && !fields.campaignLocation) {
+    return 'campaignLocation is required when physical location matching is enabled';
+  }
+  if (fields.matchAudienceMarket && !fields.targetMarket) {
+    return 'targetMarket is required when audience market matching is enabled';
+  }
+  return null;
 }
 
 async function createCampaign(req, res) {
@@ -52,6 +79,8 @@ async function createCampaign(req, res) {
   if (!hasRequiredNicheText(fields.nicheText)) {
     return res.status(400).json({ error: 'nicheText is required' });
   }
+  const geographicError = validateGeographicRequirements(fields);
+  if (geographicError) return res.status(400).json({ error: geographicError });
 
   try {
     const businessId = await findBusinessIdByUserId(req.user.userId);
@@ -128,12 +157,21 @@ async function updateCampaign(req, res) {
     connection = await db.getConnection();
     await connection.beginTransaction();
     const [owned] = await connection.query(
-      'SELECT campaignId, currency FROM campaigns WHERE campaignId = ? AND businessId = ? LIMIT 1 FOR UPDATE',
+      `SELECT campaignId, currency, campaignLocation, targetMarket, matchPhysicalLocation, matchAudienceMarket
+       FROM campaigns WHERE campaignId = ? AND businessId = ? LIMIT 1 FOR UPDATE`,
       [req.params.campaignId, businessId]
     );
     if (!owned.length) {
       await connection.rollback();
       return res.status(404).json({ error: 'Campaign not found' });
+    }
+    for (const key of ['campaignLocation', 'targetMarket', 'matchPhysicalLocation', 'matchAudienceMarket']) {
+      if (req.body?.[key] === undefined) fields[key] = owned[0][key];
+    }
+    const geographicError = validateGeographicRequirements(fields);
+    if (geographicError) {
+      await connection.rollback();
+      return res.status(400).json({ error: geographicError });
     }
     const [[allocation]] = await connection.query(
       "SELECT COALESCE(SUM(offeredAmount), 0) AS allocatedBudget FROM campaign_invitations WHERE campaignId = ? AND (status = 'accepted' OR (status = 'pending' AND (expiresAt IS NULL OR expiresAt > CURRENT_TIMESTAMP)))",
@@ -237,6 +275,8 @@ async function setCampaignPublication(req, res) {
 }
 
 module.exports = {
+  getCampaignFields,
+  validateGeographicRequirements,
   createCampaign,
   getMyCampaigns,
   getCampaign,

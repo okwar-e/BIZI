@@ -20,6 +20,10 @@ async function createCampaign(businessId, {
   budgetRange,
   preferredPlatforms,
   location,
+  campaignLocation,
+  targetMarket,
+  matchPhysicalLocation = false,
+  matchAudienceMarket = false,
   campaignGoal,
   totalBudget = 0,
   currency = 'KES',
@@ -29,9 +33,10 @@ async function createCampaign(businessId, {
   const query = options.query || db.query.bind(db);
   const [result] = await query(
     `INSERT INTO campaigns
-     (businessId, nicheText, targetAudience, nicheEmbedding, budgetRange, preferredPlatforms, location, campaignGoal,
+     (businessId, nicheText, targetAudience, nicheEmbedding, budgetRange, preferredPlatforms, location,
+      campaignLocation, targetMarket, matchPhysicalLocation, matchAudienceMarket, campaignGoal,
       totalBudget, currency, targetCreatorCount)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)` ,
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)` ,
     [
       businessId,
       nicheText,
@@ -40,6 +45,10 @@ async function createCampaign(businessId, {
       budgetRange || null,
       preferredPlatforms || null,
       location || null,
+      campaignLocation || null,
+      targetMarket || null,
+      matchPhysicalLocation,
+      matchAudienceMarket,
       campaignGoal || null,
       totalBudget,
       currency,
@@ -96,6 +105,10 @@ async function updateCampaign(campaignId, businessId, {
   budgetRange,
   preferredPlatforms,
   location,
+  campaignLocation,
+  targetMarket,
+  matchPhysicalLocation = false,
+  matchAudienceMarket = false,
   campaignGoal,
   totalBudget = 0,
   currency = 'KES',
@@ -105,7 +118,8 @@ async function updateCampaign(campaignId, businessId, {
   const query = options.query || db.query.bind(db);
   const [result] = await query(
     `UPDATE campaigns
-     SET nicheText = ?, targetAudience = ?, nicheEmbedding = ?, budgetRange = ?, preferredPlatforms = ?, location = ?, campaignGoal = ?,
+     SET nicheText = ?, targetAudience = ?, nicheEmbedding = ?, budgetRange = ?, preferredPlatforms = ?, location = ?,
+       campaignLocation = ?, targetMarket = ?, matchPhysicalLocation = ?, matchAudienceMarket = ?, campaignGoal = ?,
        totalBudget = ?, currency = ?, targetCreatorCount = ?
      WHERE campaignId = ? AND businessId = ?`,
     [
@@ -115,6 +129,10 @@ async function updateCampaign(campaignId, businessId, {
       budgetRange || null,
       preferredPlatforms || null,
       location || null,
+      campaignLocation || null,
+      targetMarket || null,
+      matchPhysicalLocation,
+      matchAudienceMarket,
       campaignGoal || null,
       totalBudget,
       currency,

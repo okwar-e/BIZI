@@ -1,6 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { validateRegistration, registrationPayload } from '../src/registration.js'
+import { dashboardPathForRole } from '../src/authSession.js'
 const fields = { name: '  New User ', email: ' TEST@example.test ', password: 'Example123!', confirmPassword: 'Example123!', businessName: ' Business ', industry: ' ', publicHandle: '@creator' }
 test('business payload contains only business fields; passwords remain unchanged', () => {
   assert.deepEqual(validateRegistration('business', fields), {})
@@ -21,4 +22,10 @@ test('empty fields, malformed email, mismatched and oversized passwords rejected
 test('unsupported roles cannot produce registration payloads', () => {
   assert.ok(validateRegistration('admin', fields).role)
   assert.throws(() => registrationPayload('admin', fields))
+})
+test('business and creator roles route to their respective workspaces', () => {
+  assert.equal(dashboardPathForRole('business'), '/')
+  assert.equal(dashboardPathForRole('creator'), '/creator/dashboard')
+  assert.equal(dashboardPathForRole('admin'), '/')
+  assert.throws(() => dashboardPathForRole('unknown'), /Unsupported account role/)
 })

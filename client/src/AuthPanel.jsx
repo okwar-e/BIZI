@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { createApi } from './api'
 import { registrationPayload, validateRegistration } from './registration'
 
-const api = createApi({ baseUrl: import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000' })
+const api = createApi({ baseUrl: import.meta.env.VITE_API_BASE_URL || (import.meta.env.DEV ? 'http://localhost:5000' : '') })
 const initial = { name: '', email: '', password: '', confirmPassword: '', businessName: '', industry: '', publicHandle: '' }
 function AuthField({ name, label, error, ...props }) {
   return <label className="field"><span>{label}</span><input name={name} aria-invalid={!!error} aria-describedby={error ? `auth-${name}-error` : undefined} {...props} />{error && <span className="field-error" id={`auth-${name}-error`}>{error}</span>}</label>

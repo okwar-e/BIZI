@@ -12,7 +12,7 @@ Bizi is a two-sided creator-marketing marketplace. Businesses create campaigns, 
 
 The browser stores the bearer token in `localStorage` and validates it through `GET /api/auth/session` on reload. Tokens expire after 24 hours and sign-out removes the stored session. Because `localStorage` is accessible to JavaScript, this is less resistant to XSS than an HttpOnly cookie.
 
-The active business recommendation flow is `POST /api/campaigns/:campaignId/ml-recommendations`. Express checks ownership and sends campaign/business text to FastAPI. FastAPI ranks a separate 2,362-profile ML catalog. Those catalog identities are not registered Bizi creator accounts; no identity mapping exists. Invitations target actual Bizi `creatorId` values only.
+The active business recommendation flow is `POST /api/campaigns/:campaignId/ml-recommendations`. Express checks campaign ownership, selects creator accounts with usable profile text, and sends their stored profile features to FastAPI. The 2,362 source rows can be seeded as ordinary Bizi creator test accounts with linked profiles; these are synthetic test identities, not verified or contactable real-world creators. Dataset-derived accounts are visible in the business creator directory and can be invited for end-to-end workflow testing. The model uses creator text and follower, following, and post counts; absent counts are shown as unlisted and treated as zero only in the model input. The missing-engagement indicator remains constant and does not distinguish candidates.
 
 ## Recommendation Model
 
@@ -27,7 +27,7 @@ The serving model is a trained Random Forest classifier selected by validation R
 
 TF-IDF and the saved sentence-transformer produce text and semantic similarities. The six raw features are passed to the saved Random Forest pipeline, which handles missing values without a separate scaler. The current serving catalog has no creator-specific historical engagement-rate evidence, so `baseline_er_missing` is 1 for every catalog creator and does not distinguish rankings. Creator bio email/phone contact strings are removed before feature construction and from recommendation responses.
 
-Random Forest class-1 scores are ranking values, not calibrated probabilities. The supplied comparison reports test ROC-AUC 0.6538, Recall@1 0.3675, Recall@3 0.7287, and Recall@5 0.8584; these offline metrics are not guarantees of live recommendation quality. Feature importances are global measures across the model training data, not per-creator explanations. Recommendations do not guarantee performance, conversions, or campaign outcomes and do not replace business judgement.
+Random Forest class-1 scores are ranking values, not calibrated probabilities. The supplied comparison reports test ROC-AUC 0.6538, Recall@1 0.3675, Recall@3 0.7287, and Recall@5 0.8584; these offline metrics are not guarantees of live recommendation quality. Feature importances are global measures across the model's training data, not per-creator explanations. Recommendations do not guarantee performance, conversions, or campaign outcomes and do not replace business judgement.
 
 ### Local Model Artifacts
 
@@ -47,6 +47,16 @@ Businesses set a campaign total budget, currency, and target creator count. The 
 
 Only open campaigns can receive recommendations, creator applications, or business invitations. Businesses manage only their own campaigns. Creators see only their own applications and invitations.
 
+## Geographic Suitability
+
+Creator base location and audience locations are stored and shown separately. Audience locations are entered from a source by the creator, with optional source and date fields; Bizi does not infer or backfill geographic information. The creator can mark the reported audience-location list complete when the source provides a complete distribution.
+
+Campaign location (where an in-person activation takes place) and target market (where the business wants to reach people) are distinct optional fields. Businesses can independently enable base-location and audience-market suitability signals. With both signals disabled, the campaign has no geographic restrictions.
+
+Suitability is a transparent, qualitative signal shown for registered Bizi creators, separate from the trained ML relevance score. Place labels are compared after trimming and case-folding; this is exact label comparison, not geocoding or a distance/radius estimate. An absent creator base location is unknown. An absent audience-market match is only a confirmed mismatch if the creator marked the reported distribution complete; otherwise it is unknown. Legacy campaign `location` values are preserved but are not mapped to either new campaign concept.
+
+For existing databases, run `npm run migrate:geographic-suitability` from `server/` after the other migrations. The migration adds nullable geographic fields and disabled-by-default flags without backfilling existing data. To roll back, first back up the database, then set `$env:BIZI_CONFIRM_GEOGRAPHIC_ROLLBACK='1'` and run `npm run rollback:geographic-suitability` from `server/`. Rollback drops the new columns and therefore permanently removes any geographic data entered since migration.
+
 ## Setup
 
 Install Node dependencies in both `client/` and `server/`. Provide a local `server/.env` with MySQL settings and a JWT secret, and install `server/ml/requirements.txt` in a Python environment. Keep secrets in environment files; never commit them.
@@ -58,27 +68,51 @@ npm run migrate
 npm run migrate:creator-platform
 npm run migrate:campaign-offers
 npm run migrate:assistant
+npm run migrate:geographic-suitability
 ```
 
-For the optional complete synthetic demo seed/provenance tables, also run `npm run migrate:demo-support`, then `node scripts/seedCompleteDemo.js`. Historical recommendation V1 tables are retained for existing data/demo support, but V1 recommendation routes and ranking code have been retired.
+To seed the model's source catalogue as creator test accounts, run `npm run migrate:dataset-samples`, then set the local environment variable `BIZI_DATASET_SAMPLE_PASSWORD` to a password of at least 12 characters and run `npm run seed:dataset-samples`. The seed uses the source `creator_username` as its stable internal identifier, stores no source contact details, and marks generated audience descriptions or fallback model counts in provenance. Missing follower/following/post counts are generated deterministically for each source record; locations and engagement rates are left unset rather than invented. Seeded accounts use `.invalid` email addresses, share the configured local test password, and are blocked from production seeding. The script is safe to rerun. If you need to remove these accounts before they have applications, invitations, or recommendation evidence, run `npm run rollback:dataset-samples`. Historical recommendation V1 tables are retained for existing data/demo support, but V1 recommendation routes and ranking code have been retired.
+
+To find a seeded test account's login email without exposing source contact data, query the local database:
+
+```sql
+SELECT c.publicHandle, u.email
+FROM demo_dataset_records d
+JOIN creators c ON c.creatorId = CAST(d.entityId AS UNSIGNED)
+JOIN users u ON u.userId = c.userId
+WHERE d.namespace = 'bizi-dataset-samples-v1'
+  AND d.entityType = 'creator'
+ORDER BY d.recordKey;
+```
 
 The optional older `npm run seed` development seeder requires `BIZI_TEST_SEED_PASSWORD` to be set in the local environment; the repository contains no default seed password.
 
 
-Start MySQL, then start FastAPI from `server/`:
+## Container Deployment
 
-```powershell
-.venv\Scripts\python.exe -m uvicorn ml.app.main:app --host 127.0.0.1 --port 8001
-```
+For separate frontend, API, ML, and MySQL containers locally or a Railway free-trial deployment, see [Container Deployment](docs/CONTAINER_DEPLOYMENT.md).
 
-Start Express with `node server.js` in `server/`, and Vite with `npm run dev` in `client/`. Express uses `BIZI_ML_SERVICE_URL` if set, otherwise `http://127.0.0.1:8001`.
+## Start Bizi on Windows
+
+1. Start MySQL using the XAMPP Control Panel.
+2. Double-click [`start-bizi.bat`](./start-bizi.bat). It checks the Python environment, model artifacts, service ports, and MySQL, then opens separate terminals for FastAPI and Express. Keep both terminals open to see logs and errors. If either service is already responding, the script does not start another copy. On startup, FastAPI embeds the local creator catalog, so the first health check can take a few minutes.
+3. In a separate terminal, start the React frontend:
+
+   ```powershell
+   cd client
+   npm run dev
+   ```
+
+4. Open the Vite URL printed in the frontend terminal (normally `http://localhost:5173`).
+
+The script starts FastAPI from `server/` with `.venv\Scripts\python.exe -m uvicorn ml.app.main:app --host 127.0.0.1 --port 8001`, so model paths resolve relative to the project. Express uses `npm start` in `server/` and its configured `PORT` (default `5000`). Its recommendation client uses `BIZI_ML_SERVICE_URL` if set, otherwise `http://127.0.0.1:8001`.
 
 ## Current Limitations
 
 - Instagram API integration is not configured and is not required for the marketplace workflow. Platform text is profile/campaign information, not a connected account or live metric.
 - Payments, escrow, and payment processing are not implemented.
 - ROI, revenue, and campaign-outcome prediction are not implemented.
-- ML catalog profiles are not linked to marketplace creator accounts.
+- Dataset-backed sample profiles are linked to system-managed Bizi records for recommendation serving, but are not real registered creators and are excluded from creator discovery and invitations.
 - Most current Bizi creator accounts in the local database are synthetic/demo. At the 2026-11-02 database audit: 360 synthetic/demo and 1 ordinary creator; campaigns were 58 draft and 1 open. These point-in-time totals change as data changes.
 - Messaging, active-collaboration tracking, and creator analytics dashboards are not implemented.
 
