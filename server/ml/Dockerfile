@@ -2,6 +2,8 @@ FROM python:3.12-slim
 
 WORKDIR /app
 
+COPY ml/requirements.txt ml/requirements.txt
+
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     NODE_ENV=production \
