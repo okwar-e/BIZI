@@ -6,7 +6,7 @@ const { recommendCreators, MlServiceError } = require('../services/mlRecommendat
 
 const business = { name: 'Glow', category: 'Beauty', description: 'Skincare promotion' };
 
-test('recommendation service forwards stored creator profile features to FastAPI', async () => {
+test('recommendation service forwards stored creator profile features and a private Space token', async t => {
   const creators = [{
     creator_id: 73,
     creator_username: 'dataset_creator',
@@ -19,12 +19,22 @@ test('recommendation service forwards stored creator profile features to FastAPI
     creator_bio: 'Beauty creator',
     is_sample_account: true,
   }];
-  let request;
+  const previousToken = process.env.BIZI_ML_SERVICE_TOKEN;
+  process.env.BIZI_ML_SERVICE_TOKEN = 'test-private-space-token';
+  t.after(() => {
+    if (previousToken === undefined) delete process.env.BIZI_ML_SERVICE_TOKEN;
+    else process.env.BIZI_ML_SERVICE_TOKEN = previousToken;
+  });
+
+  const requests = [];
   const result = await recommendCreators(
     business,
     1,
     async (url, options) => {
-      request = { url, options, body: JSON.parse(options.body) };
+      requests.push({ url, options, body: options.body ? JSON.parse(options.body) : undefined });
+      if (url.endsWith('/health')) {
+        return new Response(JSON.stringify({ embedding_cache_warming: false }), { status: 200 });
+      }
       return new Response(JSON.stringify({
         recommendations: [{
           creator_username: 'dataset_creator',
@@ -38,7 +48,9 @@ test('recommendation service forwards stored creator profile features to FastAPI
     { creators }
   );
 
-  assert.deepEqual(request.body, { business, creators });
+  assert.deepEqual(requests[1].body, { business, creators });
+  assert.equal(requests[0].options.headers.Authorization, 'Bearer test-private-space-token');
+  assert.equal(requests[1].options.headers.Authorization, 'Bearer test-private-space-token');
   assert.equal(result[0].creator_id, 73);
   assert.equal(result[0].is_sample_account, true);
 });

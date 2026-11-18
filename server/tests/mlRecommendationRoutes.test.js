@@ -4,9 +4,33 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const express = require('express');
 const { requireRole } = require('../middleware/roleMiddleware');
-const { createRouter } = require('../routes/mlRecommendationRoutes');
+const {
+  createRouter,
+  warmRecommendationCache,
+} = require('../routes/mlRecommendationRoutes');
 const campaignController = require('../controllers/campaignController');
 const database = require('../config/db');
+
+test('model cache warmup authenticates to a private Hugging Face Space', async t => {
+  const previousToken = process.env.BIZI_ML_SERVICE_TOKEN;
+  process.env.BIZI_ML_SERVICE_TOKEN = 'test-private-space-token';
+  t.after(() => {
+    if (previousToken === undefined) delete process.env.BIZI_ML_SERVICE_TOKEN;
+    else process.env.BIZI_ML_SERVICE_TOKEN = previousToken;
+  });
+
+  let request;
+  await warmRecommendationCache(
+    { query: async () => [[creator]] },
+    async (url, options) => {
+      request = { url, options };
+      return new Response('{}', { status: 200 });
+    }
+  );
+
+  assert.equal(request.url, 'http://127.0.0.1:8001/warmup');
+  assert.equal(request.options.headers.Authorization, 'Bearer test-private-space-token');
+});
 
 const campaign = {
   campaignId: 42,

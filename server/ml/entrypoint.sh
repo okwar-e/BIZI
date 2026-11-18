@@ -4,6 +4,11 @@ set -eu
 artifact_dir=/app/Bizi_model_export
 missing=0
 
+if [ ! -f "$artifact_dir/feature_config.json" ]; then
+    printf 'Downloading private model artifacts from Hugging Face.\n'
+    python /app/download_model.py
+fi
+
 for artifact in \
     feature_config.json \
     final_model.joblib \

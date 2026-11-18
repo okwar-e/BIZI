@@ -1,6 +1,10 @@
 'use strict';
 
-const { recommendCreators, MlServiceError } = require('../services/mlRecommendationService');
+const {
+  recommendCreators,
+  getMlServiceHeaders,
+  MlServiceError,
+} = require('../services/mlRecommendationService');
 const { explainMlRecommendation } = require('../services/groundedAssistant');
 const { sanitizeContactDetails } = require('../services/creatorBio');
 
@@ -41,7 +45,7 @@ async function warmRecommendationCache(db, fetchImpl = fetch) {
     try {
       const response = await fetchImpl(`${serviceUrl}/warmup`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...getMlServiceHeaders() },
         body: JSON.stringify({ creators }),
         signal: AbortSignal.timeout(10000),
       });

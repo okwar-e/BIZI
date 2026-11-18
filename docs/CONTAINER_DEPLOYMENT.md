@@ -106,3 +106,35 @@ Do not run schema migrations automatically on every container start.
 Railway's [free trial](https://docs.railway.com/pricing/free-trial) currently provides a one-time $5 credit for up to 30 days, then reverts to the Free plan. Trial projects are limited to five services, 1 GB RAM per service, and shared CPU; this deployment uses four services. The ML container's RAM and startup time are the main trial risks. Check usage and set billing alerts before leaving it deployed. Free-tier credits and service limits can change.
 
 The model export is intentionally excluded from Git. The ML service requires the separate model volume and has a slower initial startup while it loads the local sentence-transformer model and warms creator embeddings. If the trial instance cannot keep the ML service healthy within its memory or startup limits, use a larger plan or a host with enough RAM. Export/backup MySQL data before trial credits or database resources expire.
+
+## Deploy on Render with FreeDB MySQL
+
+The zero-cost layout uses three Render services: a public React frontend, a public Express API, and a public FastAPI model web service. The model service accepts prediction and warmup requests only with a shared bearer token; its health endpoint is public for Render's health check. MySQL remains on FreeDB. Do not use Render Private Services for the model on the free tier.
+
+The model export is excluded from Git. Keep it in a **private Hugging Face model repository** and set these environment variables on the Render model service:
+
+```text
+HF_MODEL_REPO_ID=<owner/private-model-repository>
+HF_TOKEN=<read token for that private repository>
+BIZI_ML_SERVICE_TOKEN=<generated long random shared secret>
+```
+
+The model container downloads the export from the private repository at each cold start into its ephemeral filesystem. Free Render services sleep when idle and lose local files when they restart, so startup includes downloading about 109 MB of artifacts before loading the model. The optimized FP16 model measured about 366 MB RSS / 432 MB peak locally; validate actual Render memory and startup logs before relying on the free instance.
+
+Deploy the services from this repository's `main` branch (or the chosen deployment branch):
+
+1. **Model API** — Render Web Service, Docker runtime; root directory `server`, Dockerfile `ml/Dockerfile`, health check `/health`, Free instance. Set the three model-service variables above.
+2. **Business API** — Render Web Service, Node runtime; root directory `server`, build `npm ci`, start `npm start`, Free instance. Set `NODE_ENV=production`, `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASSWORD`, `DB_NAME`, and `DB_SSL_CA` from FreeDB's connection details and CA certificate. Also set `JWT_SECRET`, `BIZI_ML_SERVICE_URL` to the model service's `https://<service>.onrender.com`, and `BIZI_ML_SERVICE_TOKEN` to the same shared random secret set on the model service. Health check `/health`.
+3. **Frontend** — Render Web Service, Docker runtime; root directory `client`, Dockerfile `Dockerfile`, Free instance. Set `API_UPSTREAM=https://<api-service>.onrender.com`; health check `/healthz`.
+
+Render free web services sleep after 15 minutes without traffic; initial requests after sleep can take about a minute. Their filesystem is ephemeral, so the model artifact download repeats after sleep/restart. Render's free services are for testing and hobby projects, not production. FreeDB's sandbox is limited to 100 MB and auto-deletes after 30 days; export the database before expiry. Do not seed synthetic test accounts in a production database.
+
+After the API can connect to FreeDB, run the base schema and migrations once from the API service shell:
+
+```sh
+npm run migrate
+npm run migrate:creator-platform
+npm run migrate:campaign-offers
+npm run migrate:assistant
+npm run migrate:geographic-suitability
+```

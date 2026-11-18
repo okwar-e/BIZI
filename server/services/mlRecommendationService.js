@@ -30,6 +30,13 @@ function validateRecommendationResponse(payload, topN) {
   return payload.recommendations;
 }
 
+function getMlServiceHeaders() {
+  const token = process.env.BIZI_ML_SERVICE_TOKEN;
+  return {
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+  };
+}
+
 async function recommendCreators(business, topN = 10, fetchImpl = fetch, options = {}) {
   const creators = options.creators || null;
   const serviceUrl = (process.env.BIZI_ML_SERVICE_URL || 'http://127.0.0.1:8001').replace(/\/$/, '');
@@ -38,6 +45,7 @@ async function recommendCreators(business, topN = 10, fetchImpl = fetch, options
 
   try {
     const health = await fetchImpl(`${serviceUrl}/health`, {
+      headers: getMlServiceHeaders(),
       signal: AbortSignal.timeout(Math.min(timeoutMs, 3000)),
     });
     if (health.ok) {
@@ -54,7 +62,7 @@ async function recommendCreators(business, topN = 10, fetchImpl = fetch, options
   try {
     response = await fetchImpl(`${serviceUrl}/recommend?top_n=${topN}`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...getMlServiceHeaders() },
       body: JSON.stringify({
         business,
         ...(Array.isArray(creators) && creators.length > 0 ? { creators } : {}),
@@ -84,4 +92,9 @@ async function recommendCreators(business, topN = 10, fetchImpl = fetch, options
   return validateRecommendationResponse(payload, topN);
 }
 
-module.exports = { MlServiceError, recommendCreators, validateRecommendationResponse };
+module.exports = {
+  MlServiceError,
+  getMlServiceHeaders,
+  recommendCreators,
+  validateRecommendationResponse,
+};
