@@ -1,7 +1,9 @@
 from contextlib import asynccontextmanager
+import hmac
+import os
 from typing import Annotated
 
-from fastapi import FastAPI, HTTPException, Query, Request
+from fastapi import Depends, FastAPI, HTTPException, Query, Request
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from .predictor import CreatorPredictor
@@ -74,6 +76,19 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="Bizi Creator Recommendation Service", lifespan=lifespan)
 
 
+def require_service_token(request: Request) -> None:
+    token = os.environ.get("BIZI_ML_SERVICE_TOKEN")
+    if not token:
+        if os.environ.get("NODE_ENV") == "production":
+            raise HTTPException(status_code=503, detail="Recommendation service authentication is not configured")
+        return
+    if not hmac.compare_digest(
+        request.headers.get("authorization", ""),
+        f"Bearer {token}",
+    ):
+        raise HTTPException(status_code=401, detail="Invalid service credentials")
+
+
 @app.get("/health")
 def health(request: Request) -> dict[str, int | str | bool]:
     predictor = getattr(request.app.state, "predictor", None)
@@ -89,7 +104,7 @@ def health(request: Request) -> dict[str, int | str | bool]:
     }
 
 
-@app.post("/warmup")
+@app.post("/warmup", dependencies=[Depends(require_service_token)])
 def warmup(payload: WarmupRequest, request: Request) -> dict[str, int | bool | str]:
     predictor = getattr(request.app.state, "predictor", None)
     if predictor is None:
@@ -107,7 +122,7 @@ def warmup(payload: WarmupRequest, request: Request) -> dict[str, int | bool | s
     }
 
 
-@app.post("/recommend")
+@app.post("/recommend", dependencies=[Depends(require_service_token)])
 def recommend(
     payload: RecommendRequest,
     request: Request,

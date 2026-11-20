@@ -10,6 +10,7 @@ from typing import Any
 import joblib
 import numpy as np
 import pandas as pd
+import torch
 from sentence_transformers import SentenceTransformer
 
 
@@ -21,7 +22,7 @@ FEATURE_ORDER = (
     "log_creator_post_count",
     "baseline_er_missing",
 )
-EMBEDDING_BATCH_SIZE = 64
+EMBEDDING_BATCH_SIZE = 16
 EMAIL_PATTERN = re.compile(r"(?i)\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b")
 PHONE_PATTERN = re.compile(r"(?<!\w)\+?[\d(][\d().\s-]{7,}\d(?!\w)")
 
@@ -61,7 +62,9 @@ class CreatorPredictor:
         self._embedding_cache: dict[tuple[int, str], np.ndarray] = {}
         self._embedding_cache_lock = threading.Lock()
         self._embedding_encode_lock = threading.Lock()
+        self._catalog_features_lock = threading.Lock()
         self._embedding_cache_warming = False
+        self._catalog_features: tuple[Any, np.ndarray] | None = None
         self._load_artifacts()
 
     def _load_artifacts(self) -> None:
@@ -104,6 +107,7 @@ class CreatorPredictor:
         self.semantic_model = SentenceTransformer(
             str(model_path),
             local_files_only=True,
+            model_kwargs={"torch_dtype": torch.float16},
         )
 
         self.creators = pd.read_csv(self.artifact_dir / "creator_profiles.csv")
@@ -126,17 +130,24 @@ class CreatorPredictor:
             make_profile_text(row.creator_display_name, row.creator_category, row.creator_bio)
             for row in self.creators.itertuples(index=False)
         ]
-        self.creator_tfidf = self.vectorizer.transform(self.creator_texts)
-        self.creator_embeddings = self.semantic_model.encode(
-            self.creator_texts,
-            batch_size=64,
-            convert_to_numpy=True,
-            normalize_embeddings=True,
-            show_progress_bar=False,
-        )
         self.followers = _count_column(self.creators, "creator_followers")
         self.following = _count_column(self.creators, "creator_following")
         self.post_counts = _count_column(self.creators, "creator_post_count")
+
+    def _catalog_feature_matrices(self) -> tuple[Any, np.ndarray]:
+        if self._catalog_features is None:
+            with self._catalog_features_lock:
+                if self._catalog_features is None:
+                    creator_tfidf = self.vectorizer.transform(self.creator_texts)
+                    creator_embeddings = self.semantic_model.encode(
+                        self.creator_texts,
+                        batch_size=EMBEDDING_BATCH_SIZE,
+                        convert_to_numpy=True,
+                        normalize_embeddings=True,
+                        show_progress_bar=False,
+                    )
+                    self._catalog_features = (creator_tfidf, creator_embeddings)
+        return self._catalog_features
 
     @property
     def creator_count(self) -> int:
@@ -228,8 +239,7 @@ class CreatorPredictor:
 
         if creators is None:
             candidate_frame = self.creators
-            creator_tfidf = self.creator_tfidf
-            creator_embeddings = self.creator_embeddings
+            creator_tfidf, creator_embeddings = self._catalog_feature_matrices()
             followers = self.followers
             following = self.following
             post_counts = self.post_counts
@@ -263,8 +273,7 @@ class CreatorPredictor:
                 and np.array_equal(post_counts, self.post_counts)
             )
             if catalog_matches:
-                creator_tfidf = self.creator_tfidf
-                creator_embeddings = self.creator_embeddings
+                creator_tfidf, creator_embeddings = self._catalog_feature_matrices()
             else:
                 creator_tfidf = self.vectorizer.transform(creator_texts)
                 creator_embeddings = self._creator_embeddings(candidate_frame, creator_texts)
